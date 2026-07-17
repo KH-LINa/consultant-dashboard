@@ -26,13 +26,19 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
     e.preventDefault()
     setSaving(true)
 
-    const updates = Object.entries(form).map(([key, value]) => ({ key, value: value ?? '' }))
+    const rows = Object.entries(form).map(([key, value]) => ({
+      key,
+      value: value ?? '',
+      updated_at: new Date().toISOString(),
+    }))
 
-    for (const { key, value } of updates) {
-      await supabase.from('settings').upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+    const { error } = await supabase.from('settings').upsert(rows, { onConflict: 'user_id,key' })
+
+    if (error) {
+      toast.error(`Échec de l'enregistrement : ${error.message}`)
+    } else {
+      toast.success('Paramètres enregistrés ✓')
     }
-
-    toast.success('Paramètres enregistrés ✓')
     setSaving(false)
   }
 
