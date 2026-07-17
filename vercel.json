@@ -4,5 +4,12 @@
       "path": "/api/cron/relances",
       "schedule": "0 8 * * *"
     }
+  ],
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "/login",
+      "permanent": false
+    }
   ]
 }

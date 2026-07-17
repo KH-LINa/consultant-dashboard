@@ -1,5 +1,12 @@
 /** @type {import('next').NextConfig} */
 
+// Bundle analyzer — activer avec: ANALYZE=true npm run build
+// Installation: npm install --save-dev @next/bundle-analyzer
+import bundleAnalyzer from '@next/bundle-analyzer'
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === 'true',
+})
+
 // En-têtes de sécurité appliqués à toutes les réponses.
 // (CSP volontairement non activée ici : elle nécessite une config nonce fine
 //  avec Next/recharts/react-pdf et risquerait de casser l'app. À ajouter séparément.)
@@ -31,4 +38,5 @@ const nextConfig = {
   },
 }
 
-export default nextConfig
+export default withBundleAnalyzer(nextConfig)
+
