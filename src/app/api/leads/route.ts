@@ -86,10 +86,14 @@ export async function POST(request: NextRequest) {
     const s = Object.fromEntries((rows ?? []).map((r) => [r.key, r.value ?? '']))
     const notifyTo = s.consultant_email || s.email_expediteur
 
-    if (s.resend_api_key && s.email_expediteur && notifyTo) {
+    if (!s.resend_api_key || !s.email_expediteur || !notifyTo) {
+      console.error('[leads] notif ignorée — config incomplète', {
+        hasKey: !!s.resend_api_key, sender: s.email_expediteur || null, notifyTo: notifyTo || null,
+      })
+    } else {
       const resend = new Resend(s.resend_api_key)
       const fromName = s.consultant_nom || 'i·a·infinity'
-      await resend.emails.send({
+      const { data: mailData, error: mailErr } = await resend.emails.send({
         from: `${fromName} <${s.email_expediteur}>`,
         to: [notifyTo],
         replyTo: email,
@@ -110,9 +114,15 @@ export async function POST(request: NextRequest) {
           </div>
         `,
       })
+      if (mailErr) {
+        console.error('[leads] échec envoi notification Resend:', JSON.stringify(mailErr))
+      } else {
+        console.log('[leads] notification envoyée, id:', mailData?.id)
+      }
     }
-  } catch {
-    // Le prospect est déjà enregistré ; on ignore toute erreur d'envoi de notification.
+  } catch (e) {
+    // Le prospect est déjà enregistré ; on logge mais on n'échoue jamais la requête.
+    console.error('[leads] exception notification:', e)
   }
 
   return NextResponse.json({ success: true })
