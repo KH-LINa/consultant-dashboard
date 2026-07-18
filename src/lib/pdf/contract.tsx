@@ -1,18 +1,19 @@
 import {
   Document, Page, Text, View, StyleSheet,
 } from '@react-pdf/renderer'
+import { BrandLogo } from '@/lib/pdf/brand-logo'
 
 const styles = StyleSheet.create({
   page: { padding: 48, fontSize: 9.5, fontFamily: 'Helvetica', color: '#1a1a1a', lineHeight: 1.5 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 28, borderBottom: '2px solid #1d4ed8', paddingBottom: 12 },
-  logo: { fontSize: 16, fontFamily: 'Helvetica-Bold', color: '#1d4ed8' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 28, borderBottom: '2px solid #534AB7', paddingBottom: 12 },
+  logo: { fontSize: 16, fontFamily: 'Helvetica-Bold', color: '#534AB7' },
   subtitle: { fontSize: 9, color: '#6b7280', marginTop: 3 },
   infoBlock: { textAlign: 'right' },
   infoLabel: { fontSize: 8, color: '#9ca3af' },
   infoValue: { fontSize: 9, fontFamily: 'Helvetica-Bold' },
   docTitle: { fontSize: 13, fontFamily: 'Helvetica-Bold', textAlign: 'center', marginBottom: 20, marginTop: 8, color: '#111827' },
   body: { marginTop: 8 },
-  articleHeader: { fontSize: 10, fontFamily: 'Helvetica-Bold', marginTop: 14, marginBottom: 3, color: '#1d4ed8' },
+  articleHeader: { fontSize: 10, fontFamily: 'Helvetica-Bold', marginTop: 14, marginBottom: 3, color: '#534AB7' },
   paragraph: { marginBottom: 4 },
   footer: {
     position: 'absolute', bottom: 28, left: 48, right: 48,
@@ -50,7 +51,8 @@ export function ContractPDF({ numero, contenu, consultantName, siret, createdAt 
         {/* En-tête */}
         <View style={styles.header} fixed>
           <View>
-            <Text style={styles.logo}>{consultantName}</Text>
+            <BrandLogo height={20} />
+            <Text style={[styles.logo, { marginTop: 5 }]}>{consultantName}</Text>
             <Text style={styles.subtitle}>Auto-entrepreneur — Consultant IA Indépendant</Text>
             <Text style={[styles.subtitle, { marginTop: 1 }]}>SIRET : {siret}</Text>
           </View>

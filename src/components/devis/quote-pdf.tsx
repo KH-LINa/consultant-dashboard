@@ -3,25 +3,26 @@ import {
 } from '@react-pdf/renderer'
 import type { Quote, Contact } from '@/lib/types'
 import { OFFER_LABELS } from '@/lib/types'
+import { BrandLogo } from '@/lib/pdf/brand-logo'
 
 const styles = StyleSheet.create({
   page: { padding: 48, fontSize: 10, fontFamily: 'Helvetica', color: '#1a1a1a' },
   header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 32 },
-  logo: { fontSize: 18, fontFamily: 'Helvetica-Bold', color: '#1d4ed8' },
+  logo: { fontSize: 18, fontFamily: 'Helvetica-Bold', color: '#534AB7' },
   subtitle: { fontSize: 10, color: '#6b7280', marginTop: 4 },
   infoBlock: { textAlign: 'right' },
   infoLabel: { fontSize: 9, color: '#9ca3af' },
   infoValue: { fontSize: 10 },
   title: { fontSize: 16, fontFamily: 'Helvetica-Bold', marginBottom: 4 },
   badge: {
-    backgroundColor: '#dbeafe', color: '#1d4ed8', fontSize: 9,
+    backgroundColor: '#EEEBFA', color: '#534AB7', fontSize: 9,
     paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, alignSelf: 'flex-start',
   },
   section: { marginTop: 24 },
   sectionTitle: { fontSize: 11, fontFamily: 'Helvetica-Bold', marginBottom: 8, color: '#374151' },
   contactBox: {
     backgroundColor: '#f9fafb', padding: 12, borderRadius: 4,
-    borderLeft: '3px solid #3b82f6',
+    borderLeft: '3px solid #534AB7',
   },
   tableHeader: {
     flexDirection: 'row', backgroundColor: '#f3f4f6',
@@ -40,10 +41,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12,
   },
   totalInner: {
-    backgroundColor: '#eff6ff', padding: 12, borderRadius: 4, minWidth: 200,
+    backgroundColor: '#EEEBFA', padding: 12, borderRadius: 4, minWidth: 200,
   },
   totalLabel: { fontSize: 9, color: '#6b7280' },
-  totalAmount: { fontSize: 18, fontFamily: 'Helvetica-Bold', color: '#1d4ed8', marginTop: 2 },
+  totalAmount: { fontSize: 18, fontFamily: 'Helvetica-Bold', color: '#534AB7', marginTop: 2 },
   tvaNote: { fontSize: 8, color: '#9ca3af', marginTop: 4 },
   footer: {
     position: 'absolute', bottom: 32, left: 48, right: 48,
@@ -73,7 +74,8 @@ export function QuotePDF({ quote, contact, consultantName, siret }: QuotePDFProp
         {/* En-tête */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.logo}>{consultantName}</Text>
+            <BrandLogo />
+            <Text style={[styles.logo, { marginTop: 6 }]}>{consultantName}</Text>
             <Text style={styles.subtitle}>Consultant IA Indépendant</Text>
             <Text style={[styles.subtitle, { marginTop: 2 }]}>SIRET : {siret}</Text>
           </View>

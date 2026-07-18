@@ -1,11 +1,12 @@
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
 import type { Invoice, Contact } from '@/lib/types'
 import { OFFER_LABELS } from '@/lib/types'
+import { BrandLogo } from '@/lib/pdf/brand-logo'
 
 const styles = StyleSheet.create({
   page: { padding: 48, fontSize: 10, fontFamily: 'Helvetica', color: '#1a1a1a' },
   header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 32 },
-  logo: { fontSize: 18, fontFamily: 'Helvetica-Bold', color: '#1d4ed8' },
+  logo: { fontSize: 18, fontFamily: 'Helvetica-Bold', color: '#534AB7' },
   subtitle: { fontSize: 10, color: '#6b7280', marginTop: 4 },
   infoBlock: { textAlign: 'right' },
   infoLabel: { fontSize: 9, color: '#9ca3af' },
@@ -18,7 +19,7 @@ const styles = StyleSheet.create({
   twoCol: { flexDirection: 'row', gap: 16 },
   infoBox: { flex: 1, backgroundColor: '#f9fafb', padding: 12, borderRadius: 4 },
   infoBoxLabel: { fontSize: 9, color: '#9ca3af', marginBottom: 4, fontFamily: 'Helvetica-Bold' },
-  tableHeader: { flexDirection: 'row', backgroundColor: '#1d4ed8', padding: '7 8', borderRadius: 3, marginBottom: 2 },
+  tableHeader: { flexDirection: 'row', backgroundColor: '#534AB7', padding: '7 8', borderRadius: 3, marginBottom: 2 },
   tableRow: { flexDirection: 'row', padding: '6 8', borderBottom: '1px solid #f3f4f6' },
   tableAlt: { flexDirection: 'row', padding: '6 8', backgroundColor: '#f9fafb', borderBottom: '1px solid #f3f4f6' },
   col6: { flex: 6 },
@@ -28,17 +29,17 @@ const styles = StyleSheet.create({
   totalSection: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 },
   totalBox: { minWidth: 220 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
-  totalRowFinal: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTop: '2px solid #1d4ed8', marginTop: 4 },
+  totalRowFinal: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTop: '2px solid #534AB7', marginTop: 4 },
   tvaNote: { fontSize: 8, color: '#9ca3af', marginTop: 8, textAlign: 'right' },
   footer: { position: 'absolute', bottom: 32, left: 48, right: 48, borderTop: '1px solid #e5e7eb', paddingTop: 12 },
   footerText: { fontSize: 8, color: '#9ca3af', textAlign: 'center', marginBottom: 2 },
-  mentionsBox: { marginTop: 24, padding: 12, backgroundColor: '#eff6ff', borderRadius: 4 },
-  mentionsText: { fontSize: 8, color: '#1e40af', lineHeight: 1.5 },
+  mentionsBox: { marginTop: 24, padding: 12, backgroundColor: '#EEEBFA', borderRadius: 4 },
+  mentionsText: { fontSize: 8, color: '#3F3691', lineHeight: 1.5 },
 })
 
 const statusColors: Record<string, { bg: string; text: string }> = {
   brouillon: { bg: '#f3f4f6', text: '#6b7280' },
-  'envoyée': { bg: '#dbeafe', text: '#1d4ed8' },
+  'envoyée': { bg: '#EEEBFA', text: '#534AB7' },
   'payée': { bg: '#dcfce7', text: '#15803d' },
   'annulée': { bg: '#fee2e2', text: '#dc2626' },
 }
@@ -67,14 +68,15 @@ export function InvoicePDF({ invoice, contact, consultantName, siret, email, tel
         {/* En-tête */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.logo}>{consultantName}</Text>
+            <BrandLogo />
+            <Text style={[styles.logo, { marginTop: 6 }]}>{consultantName}</Text>
             <Text style={styles.subtitle}>Consultant IA Indépendant — Auto-entrepreneur</Text>
             <Text style={[styles.subtitle, { marginTop: 2 }]}>SIRET : {siret}</Text>
             {email && <Text style={[styles.subtitle, { marginTop: 2 }]}>{email}</Text>}
             {telephone && <Text style={[styles.subtitle, { marginTop: 1 }]}>{telephone}</Text>}
           </View>
           <View style={styles.infoBlock}>
-            <Text style={[styles.infoValue, { fontSize: 22, fontFamily: 'Helvetica-Bold', color: '#1d4ed8' }]}>FACTURE</Text>
+            <Text style={[styles.infoValue, { fontSize: 22, fontFamily: 'Helvetica-Bold', color: '#534AB7' }]}>FACTURE</Text>
             <Text style={[styles.infoValue, { fontFamily: 'Helvetica-Bold', marginTop: 4 }]}>{invoice.numero}</Text>
             <Text style={[styles.infoLabel, { marginTop: 8 }]}>Date d'émission</Text>
             <Text style={styles.infoValue}>{emissionStr}</Text>
@@ -116,7 +118,7 @@ export function InvoicePDF({ invoice, contact, consultantName, siret, email, tel
         {/* Offre */}
         <View style={{ marginBottom: 16 }}>
           <Text style={{ fontSize: 9, color: '#6b7280' }}>
-            Prestation : <Text style={{ fontFamily: 'Helvetica-Bold', color: '#1d4ed8' }}>{offreLabel[invoice.offre] ?? invoice.offre}</Text>
+            Prestation : <Text style={{ fontFamily: 'Helvetica-Bold', color: '#534AB7' }}>{offreLabel[invoice.offre] ?? invoice.offre}</Text>
           </Text>
         </View>
 
@@ -155,7 +157,7 @@ export function InvoicePDF({ invoice, contact, consultantName, siret, email, tel
             </View>
             <View style={styles.totalRowFinal}>
               <Text style={{ fontSize: 12, fontFamily: 'Helvetica-Bold' }}>TOTAL TTC</Text>
-              <Text style={{ fontSize: 14, fontFamily: 'Helvetica-Bold', color: '#1d4ed8' }}>
+              <Text style={{ fontSize: 14, fontFamily: 'Helvetica-Bold', color: '#534AB7' }}>
                 {invoice.montant_ht.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
               </Text>
             </View>
