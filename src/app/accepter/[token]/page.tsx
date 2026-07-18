@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { OFFER_LABELS } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { CheckCircle2, XCircle, FileText, Loader2 } from 'lucide-react'
@@ -22,11 +23,7 @@ interface QuoteData {
   consultant_siret: string
 }
 
-const offreLabel: Record<string, string> = {
-  consulting: 'Consulting IA',
-  automatisation: 'Automatisation',
-  solution_globale: 'Solution globale',
-}
+const offreLabel: Record<string, string> = OFFER_LABELS
 
 function eur(n: number) {
   return n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })

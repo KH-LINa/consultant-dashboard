@@ -2,6 +2,7 @@ import {
   Document, Page, Text, View, StyleSheet, Font,
 } from '@react-pdf/renderer'
 import type { Quote, Contact } from '@/lib/types'
+import { OFFER_LABELS } from '@/lib/types'
 
 const styles = StyleSheet.create({
   page: { padding: 48, fontSize: 10, fontFamily: 'Helvetica', color: '#1a1a1a' },
@@ -51,11 +52,7 @@ const styles = StyleSheet.create({
   footerText: { fontSize: 8, color: '#9ca3af', textAlign: 'center', marginBottom: 2 },
 })
 
-const offreLabel: Record<string, string> = {
-  consulting: 'Consulting IA',
-  automatisation: 'Automatisation',
-  solution_globale: 'Solution globale',
-}
+const offreLabel: Record<string, string> = OFFER_LABELS
 
 interface QuotePDFProps {
   quote: Quote

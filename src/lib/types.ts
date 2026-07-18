@@ -2,6 +2,16 @@ export type ContactType = 'prospect' | 'client' | 'inactif'
 export type QuoteOffer = 'consulting' | 'automatisation' | 'solution_globale'
 export type QuoteStatus = 'brouillon' | 'envoyé' | 'signé' | 'refusé' | 'expiré'
 
+// Libellés affichés des types d'offre — source unique, alignée sur le
+// vocabulaire du site vitrine (src/app/(public)/site/Vitrine.tsx).
+// À réutiliser partout (formulaires, tables, PDF, page d'acceptation)
+// pour éviter toute divergence.
+export const OFFER_LABELS: Record<QuoteOffer, string> = {
+  consulting: 'Consulting — accompagnement Lean',
+  automatisation: 'Automatisation / IA',
+  solution_globale: 'Solution globale Lean + IA',
+}
+
 export interface Contact {
   id: string
   type: ContactType

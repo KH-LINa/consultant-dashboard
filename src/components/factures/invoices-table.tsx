@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Invoice } from '@/lib/types'
+import { OFFER_LABELS } from '@/lib/types'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -24,11 +25,7 @@ const statusStyle: Record<string, string> = {
   'annulée': 'bg-red-100 text-red-700',
 }
 
-const offreLabel: Record<string, string> = {
-  consulting: 'Consulting',
-  automatisation: 'Automatisation',
-  solution_globale: 'Solution globale',
-}
+const offreLabel: Record<string, string> = OFFER_LABELS
 
 type InvoiceWithContact = Invoice & { contact?: { nom: string; entreprise: string | null; email: string | null } }
 

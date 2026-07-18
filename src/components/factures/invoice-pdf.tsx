@@ -1,5 +1,6 @@
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
 import type { Invoice, Contact } from '@/lib/types'
+import { OFFER_LABELS } from '@/lib/types'
 
 const styles = StyleSheet.create({
   page: { padding: 48, fontSize: 10, fontFamily: 'Helvetica', color: '#1a1a1a' },
@@ -42,11 +43,7 @@ const statusColors: Record<string, { bg: string; text: string }> = {
   'annulée': { bg: '#fee2e2', text: '#dc2626' },
 }
 
-const offreLabel: Record<string, string> = {
-  consulting: 'Consulting IA',
-  automatisation: 'Automatisation',
-  solution_globale: 'Solution globale',
-}
+const offreLabel: Record<string, string> = OFFER_LABELS
 
 interface InvoicePDFProps {
   invoice: Invoice

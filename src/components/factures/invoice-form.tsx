@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Invoice, QuoteLine, QuoteOffer, InvoiceStatus } from '@/lib/types'
+import { OFFER_LABELS } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -158,9 +159,9 @@ export function InvoiceForm({
             <Select value={form.offre} onValueChange={(v) => setForm((p) => ({ ...p, offre: v as QuoteOffer }))}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="consulting">Consulting</SelectItem>
-                <SelectItem value="automatisation">Automatisation</SelectItem>
-                <SelectItem value="solution_globale">Solution globale</SelectItem>
+                <SelectItem value="consulting">{OFFER_LABELS.consulting}</SelectItem>
+                <SelectItem value="automatisation">{OFFER_LABELS.automatisation}</SelectItem>
+                <SelectItem value="solution_globale">{OFFER_LABELS.solution_globale}</SelectItem>
               </SelectContent>
             </Select>
           </div>
