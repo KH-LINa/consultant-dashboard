@@ -168,9 +168,8 @@
 /* À propos */
 .iav .about { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 44px; align-items: center; }
 .iav .about .portrait {
-  aspect-ratio: 4/5; border-radius: var(--radius); border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--border));
-  background: repeating-linear-gradient(135deg, var(--accent-tint), var(--accent-tint) 12px, transparent 12px, transparent 24px);
-  display: flex; align-items: center; justify-content: center; text-align: center; color: var(--muted); font-family: var(--mono); font-size: 13px; padding: 20px;
+  width: 100%; aspect-ratio: 4/5; object-fit: cover; object-position: center top;
+  border-radius: var(--radius); border: 1px solid var(--border); box-shadow: var(--shadow); display: block;
 }
 .iav .about h2 { font-size: clamp(26px, 3vw, 36px); font-weight: 700; }
 .iav .about p { margin-top: 16px; color: var(--ink-soft); }
