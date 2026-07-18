@@ -5,6 +5,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 const PUBLIC_PAGES = [
   '/login',
   '/accepter',            // page publique d'acceptation de devis (token secret)
+  '/site',                // site vitrine public (prospection)
   '/mot-de-passe-oublie',
   '/update-password',
 ]
