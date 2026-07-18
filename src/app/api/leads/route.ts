@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Resend } from 'resend'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkRateLimit, clientId } from '@/lib/rate-limit'
 
 /**
  * Réception des demandes du site vitrine (formulaire public).
- * Crée un contact de type "prospect" dans le dashboard.
+ * Crée un contact de type "prospect" dans le dashboard, puis envoie
+ * une notification email au consultant (best-effort).
  *
  * Public et non authentifié : on utilise donc le client admin (service_role)
  * et on rattache le prospect au compte du consultant via LEAD_OWNER_USER_ID.
@@ -16,6 +18,10 @@ const OWNER_USER_ID =
   process.env.LEAD_OWNER_USER_ID ?? '513b8bf8-f9b4-48cc-88c6-52101b1f07cc'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
 
 export async function POST(request: NextRequest) {
   // Anti-abus : 10 demandes / minute / IP
@@ -71,6 +77,42 @@ export async function POST(request: NextRequest) {
 
   if (error) {
     return NextResponse.json({ error: "Une erreur est survenue, réessayez plus tard." }, { status: 500 })
+  }
+
+  // Notification email au consultant — best-effort : ne bloque JAMAIS la création du prospect.
+  try {
+    const { data: rows } = await supabase
+      .from('settings').select('key, value').eq('user_id', OWNER_USER_ID)
+    const s = Object.fromEntries((rows ?? []).map((r) => [r.key, r.value ?? '']))
+    const notifyTo = s.consultant_email || s.email_expediteur
+
+    if (s.resend_api_key && s.email_expediteur && notifyTo) {
+      const resend = new Resend(s.resend_api_key)
+      const fromName = s.consultant_nom || 'i·a·infinity'
+      await resend.emails.send({
+        from: `${fromName} <${s.email_expediteur}>`,
+        to: [notifyTo],
+        replyTo: email,
+        subject: `Nouveau prospect — ${nom}${entreprise ? ` (${entreprise})` : ''}`,
+        html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1a1a1a;">
+            <h2 style="color: #534AB7;">Nouveau prospect via le site</h2>
+            <p style="color:#565073;">Une demande vient d'arriver depuis votre site vitrine. Le contact a été ajouté à votre dashboard.</p>
+            <table style="width:100%; border-collapse:collapse; margin:20px 0; font-size:14px;">
+              <tr><td style="padding:6px 0; color:#857FA0; width:120px;">Nom</td><td style="padding:6px 0;"><strong>${esc(nom)}</strong></td></tr>
+              <tr><td style="padding:6px 0; color:#857FA0;">Entreprise</td><td style="padding:6px 0;">${esc(entreprise)}</td></tr>
+              <tr><td style="padding:6px 0; color:#857FA0;">Email</td><td style="padding:6px 0;"><a href="mailto:${esc(email)}" style="color:#534AB7;">${esc(email)}</a></td></tr>
+              ${telephone ? `<tr><td style="padding:6px 0; color:#857FA0;">Téléphone</td><td style="padding:6px 0;">${esc(telephone)}</td></tr>` : ''}
+              ${besoin ? `<tr><td style="padding:6px 0; color:#857FA0;">Besoin</td><td style="padding:6px 0;">${esc(besoin)}</td></tr>` : ''}
+            </table>
+            ${message ? `<p style="color:#857FA0; margin-bottom:4px;">Message :</p><blockquote style="margin:0; padding:12px 16px; background:#EEEBFA; border-radius:8px; white-space:pre-line;">${esc(message)}</blockquote>` : ''}
+            <p style="font-size:12px; color:#857FA0; margin-top:24px;">Répondez directement à cet email pour recontacter le prospect.</p>
+          </div>
+        `,
+      })
+    }
+  } catch {
+    // Le prospect est déjà enregistré ; on ignore toute erreur d'envoi de notification.
   }
 
   return NextResponse.json({ success: true })
