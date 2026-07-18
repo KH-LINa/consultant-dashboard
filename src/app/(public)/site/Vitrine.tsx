@@ -216,7 +216,7 @@ export default function Vitrine() {
         <section className="section alt" id="apropos">
           <div className="wrap about">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="portrait" src="/apropos-khelaf.jpg" alt="Khelaf FEDILA, Consultant Lean & IA Industrielle" width={480} height={600} />
+            <img className="portrait" src="/PhotoCV.jpg" alt="Khelaf FEDILA, Consultant Lean & IA Industrielle" width={480} height={600} />
             <div>
               <span className="eyebrow">À propos</span>
               <h2>Khelaf FEDILA</h2>
