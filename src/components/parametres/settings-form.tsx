@@ -130,6 +130,18 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
               Doit être un domaine vérifié dans Resend (ou utilisez <code>onboarding@resend.dev</code> en test)
             </p>
           </div>
+          <div className="space-y-2">
+            <Label>Email de notification (nouveaux prospects)</Label>
+            <Input
+              type="email"
+              value={form.notification_email}
+              onChange={(e) => set('notification_email', e.target.value)}
+              placeholder="vous@exemple.fr"
+            />
+            <p className="text-xs text-gray-400">
+              Adresse qui reçoit une alerte à chaque demande envoyée depuis le site vitrine. Si vide, l&apos;email professionnel ci-dessus est utilisé.
+            </p>
+          </div>
         </CardContent>
       </Card>
 

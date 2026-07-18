@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     const { data: rows } = await supabase
       .from('settings').select('key, value').eq('user_id', OWNER_USER_ID)
     const s = Object.fromEntries((rows ?? []).map((r) => [r.key, r.value ?? '']))
-    const notifyTo = s.consultant_email || s.email_expediteur
+    const notifyTo = s.notification_email || s.consultant_email || s.email_expediteur
 
     if (!s.resend_api_key || !s.email_expediteur || !notifyTo) {
       console.error('[leads] notif ignorée — config incomplète', {

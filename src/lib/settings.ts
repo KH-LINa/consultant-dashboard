@@ -8,6 +8,7 @@ export interface ConsultantSettings {
   consultant_adresse: string
   resend_api_key: string
   email_expediteur: string
+  notification_email: string
   taux_cotisation_urssaf: string
   versement_liberatoire: string
   taux_versement_ir: string
@@ -22,6 +23,7 @@ const DEFAULTS: ConsultantSettings = {
   consultant_adresse: '',
   resend_api_key: '',
   email_expediteur: '',
+  notification_email: '',
   taux_cotisation_urssaf: '24.6',
   versement_liberatoire: 'false',
   taux_versement_ir: '2.2',
