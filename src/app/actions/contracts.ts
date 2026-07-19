@@ -140,29 +140,46 @@ Génère l'objet_mission, les livrables et le délai pour ce contrat.`,
 
   const contenuFinal = replaceVariables(template.contenu, vars)
 
-  // Numéro séquentiel CTR-YYYY-XXXX
+  // Numéro séquentiel CTR-YYYY-XXXX.
+  // Base : plus grand numéro VISIBLE de l'année. (L'ancien comptage de lignes
+  // se trompait dès qu'un contrat était supprimé ou archivé : le numéro
+  // recalculé entrait en collision avec un numéro déjà attribué.)
   const year = new Date().getFullYear()
-  const { count } = await supabase
+  const { data: dernier } = await supabase
     .from('contracts')
-    .select('*', { count: 'exact', head: true })
-    .gte('created_at', `${year}-01-01`)
+    .select('numero')
+    .like('numero', `CTR-${year}-%`)
+    .order('numero', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
-  const numero = `CTR-${year}-${String((count ?? 0) + 1).padStart(4, '0')}`
+  const parsed = dernier ? parseInt(dernier.numero.slice(-4), 10) : 0
+  const base = Number.isNaN(parsed) ? 0 : parsed
 
-  // Insertion en base
-  const { data: newContract, error: insertError } = await supabase
-    .from('contracts')
-    .insert({
-      quote_id:    quoteId,
-      contact_id:  contact.id,
-      template_id: template.id,
-      numero,
-      contenu:     contenuFinal,
-      statut:      'brouillon',
-      montant_ht:  quote.montant_ht,
-    })
-    .select('id')
-    .single()
+  // La contrainte d'unicité est globale alors que la RLS restreint la lecture :
+  // un numéro invisible pour cette session peut encore exister. En cas de
+  // collision (code 23505), on réessaie au numéro suivant.
+  let newContract: { id: string } | null = null
+  let insertError: { message: string; code?: string } | null = null
+  for (let essai = 0; essai < 10; essai++) {
+    const numero = `CTR-${year}-${String(base + 1 + essai).padStart(4, '0')}`
+    const { data, error } = await supabase
+      .from('contracts')
+      .insert({
+        quote_id:    quoteId,
+        contact_id:  contact.id,
+        template_id: template.id,
+        numero,
+        contenu:     contenuFinal,
+        statut:      'brouillon',
+        montant_ht:  quote.montant_ht,
+      })
+      .select('id')
+      .single()
+    if (!error && data) { newContract = data; insertError = null; break }
+    insertError = error
+    if (error?.code !== '23505') break
+  }
 
   if (insertError || !newContract) {
     return { ok: false, error: insertError?.message ?? 'Erreur lors de la création du contrat' }
