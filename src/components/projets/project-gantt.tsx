@@ -36,6 +36,7 @@ import {
 } from 'lucide-react'
 import { GanttTooltip } from '@/components/projets/gantt-tooltip'
 import { PertView } from '@/components/projets/pert-view'
+import { useResizableColumns, createTaskListComponents } from '@/components/projets/gantt-task-list'
 import {
   findDependencyConflicts, toLocalISO, computeCriticalPath, completionRate,
 } from '@/lib/gantt-deps'
@@ -97,6 +98,24 @@ export function ProjectGantt({
   const [view, setView] = useState<'gantt' | 'pert'>('gantt')
   const [zoom, setZoom] = useState(1) // facteur de largeur des colonnes (0.5 → 2)
   const [fullscreen, setFullscreen] = useState(false)
+
+  // Colonnes de la liste (Tâche / Début / Fin) redimensionnables par glisser
+  const { widths: colWidths, startResize } = useResizableColumns()
+  const { Header: TaskListHeader, Table: TaskListTable } = useMemo(
+    () => createTaskListComponents(colWidths, startResize),
+    [colWidths, startResize]
+  )
+
+  // Phases repliées (le triangle ▶/▼ de la liste replie/déplie leurs tâches)
+  const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set())
+  function togglePhase(ganttId: string) {
+    setCollapsedPhases((prev) => {
+      const next = new Set(prev)
+      if (next.has(ganttId)) next.delete(ganttId)
+      else next.add(ganttId)
+      return next
+    })
+  }
 
   // Échap quitte le plein écran
   useEffect(() => {
@@ -171,7 +190,7 @@ export function ProjectGantt({
         type: 'project',
         // Progression de la phase = réalisation pondérée de ses tâches
         progress: completionRate(localTasks, p.id),
-        hideChildren: false,
+        hideChildren: collapsedPhases.has(`phase_${p.id}`),
         styles: { backgroundColor: p.couleur, progressColor: shade(p.couleur), backgroundSelectedColor: p.couleur },
       }]
       // tâches de la phase, triées par date de début
@@ -235,7 +254,7 @@ export function ProjectGantt({
         },
       }
     }
-  }, [localPhases, localTasks, localMilestones, dependencies, collabById, conflictTaskIds, showCritical, criticalIds])
+  }, [localPhases, localTasks, localMilestones, dependencies, collabById, conflictTaskIds, showCritical, criticalIds, collapsedPhases])
 
   // --- Handlers (optimistic + rollback) ---
   async function handleDateChange(task: GanttTask) {
@@ -452,6 +471,9 @@ export function ProjectGantt({
                 onDateChange={handleDateChange}
                 onProgressChange={handleProgressChange}
                 onClick={handleClick}
+                onExpanderClick={(t) => togglePhase(t.id)}
+                TaskListHeader={TaskListHeader}
+                TaskListTable={TaskListTable}
                 listCellWidth="220px"
                 columnWidth={Math.round((viewMode === 'Month' ? 200 : viewMode === 'Week' ? 140 : 60) * zoom)}
                 barCornerRadius={4}
