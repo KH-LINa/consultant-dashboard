@@ -15,22 +15,30 @@
  *   + rollback et toast d'erreur.
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import type { Task as GanttTask } from 'gantt-task-react'
 import 'gantt-task-react/dist/index.css'
+import { createClient } from '@/lib/supabase/client'
 import type {
   ProjectPhase, ProjectMilestone, ProjectTask, TaskDependency, Collaborateur, ProjectTaskStatus,
 } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { GanttChartSquare } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
+import { GanttChartSquare, AlertTriangle, Plus, Route } from 'lucide-react'
 import { GanttTooltip } from '@/components/projets/gantt-tooltip'
-import { findDependencyConflicts, toLocalISO } from '@/lib/gantt-deps'
+import {
+  findDependencyConflicts, toLocalISO, computeCriticalPath, completionRate,
+} from '@/lib/gantt-deps'
 import {
   updateTaskDates, updateMilestoneDate, updatePhaseWithTasks, updateTaskProgress,
 } from '@/app/actions/gantt'
 import { toast } from 'sonner'
-import { AlertTriangle } from 'lucide-react'
 
 const Gantt = dynamic(() => import('gantt-task-react').then((m) => m.Gantt), { ssr: false })
 
@@ -78,13 +86,32 @@ function initials(nom: string): string {
 export function ProjectGantt({
   projectId, phases, tasks, milestones, dependencies, collaborateurs,
 }: ProjectGanttProps) {
+  const router = useRouter()
   const [viewMode, setViewMode] = useState<VM>('Week')
   const [selectedMilestone, setSelectedMilestone] = useState<ProjectMilestone | null>(null)
+  const [showCritical, setShowCritical] = useState(false)
+
+  // Formulaire d'ajout rapide de tâche
+  const NONE = '__none__'
+  const [newTitre, setNewTitre] = useState('')
+  const [newPhase, setNewPhase] = useState<string>(NONE)
+  const [newDebut, setNewDebut] = useState(() => toLocalISO(new Date()))
+  const [newFin, setNewFin] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() + 4); return toLocalISO(d)
+  })
+  const [adding, setAdding] = useState(false)
 
   // États locaux (optimistic update)
   const [localPhases, setLocalPhases] = useState(phases)
   const [localTasks, setLocalTasks] = useState(tasks)
   const [localMilestones, setLocalMilestones] = useState(milestones)
+
+  // Resynchronise l'état local quand les données serveur changent
+  // (router.refresh() après une édition dans un autre panneau, ajout de tâche…) —
+  // sans cela le Gantt resterait figé sur les données du premier rendu.
+  useEffect(() => { setLocalPhases(phases) }, [phases])
+  useEffect(() => { setLocalTasks(tasks) }, [tasks])
+  useEffect(() => { setLocalMilestones(milestones) }, [milestones])
 
   const collabById = useMemo(
     () => Object.fromEntries(collaborateurs.map((c) => [c.id, c])),
@@ -101,6 +128,15 @@ export function ProjectGantt({
     [conflicts]
   )
 
+  // Chemin critique (CPM) : tâches sans marge — les retarder retarde le projet
+  const criticalIds = useMemo(
+    () => computeCriticalPath(localTasks, dependencies),
+    [localTasks, dependencies]
+  )
+
+  // Taux de réalisation global (pondéré par la durée des tâches)
+  const realisation = useMemo(() => completionRate(localTasks), [localTasks])
+
   // Construction des tâches Gantt : phase (groupe) → ses tâches, puis jalons en bas
   const ganttTasks: GanttTask[] = useMemo(() => {
     const items: GanttTask[] = []
@@ -114,9 +150,10 @@ export function ProjectGantt({
         start: toDate(p.date_debut)!,
         end: toDate(p.date_fin)!,
         type: 'project',
-        progress: 0,
+        // Progression de la phase = réalisation pondérée de ses tâches
+        progress: completionRate(localTasks, p.id),
         hideChildren: false,
-        styles: { backgroundColor: p.couleur, progressColor: p.couleur, backgroundSelectedColor: p.couleur },
+        styles: { backgroundColor: p.couleur, progressColor: shade(p.couleur), backgroundSelectedColor: p.couleur },
       })
       // tâches de la phase
       for (const t of localTasks.filter((t) => t.phase_id === p.id)) {
@@ -152,7 +189,10 @@ export function ProjectGantt({
 
     function buildTaskBar(t: ProjectTask, project: string | undefined): GanttTask {
       const resp = t.responsable_id ? collabById[t.responsable_id] : null
-      const color = STATUT_COLOR[t.statut] ?? '#3b82f6'
+      // Mode chemin critique : critiques en rouge, le reste estompé
+      const color = showCritical
+        ? (criticalIds.has(t.id) ? '#dc2626' : '#cbd5e1')
+        : (STATUT_COLOR[t.statut] ?? '#3b82f6')
       const deps = dependencies.filter((d) => d.successor_id === t.id).map((d) => `task_${d.predecessor_id}`)
       const baseName = resp ? `[${initials(resp.nom)}] ${t.titre}` : t.titre
       return {
@@ -171,7 +211,7 @@ export function ProjectGantt({
         },
       }
     }
-  }, [localPhases, localTasks, localMilestones, dependencies, collabById, conflictTaskIds])
+  }, [localPhases, localTasks, localMilestones, dependencies, collabById, conflictTaskIds, showCritical, criticalIds])
 
   // --- Handlers (optimistic + rollback) ---
   async function handleDateChange(task: GanttTask) {
@@ -238,6 +278,31 @@ export function ProjectGantt({
     }
   }
 
+  // Ajout rapide d'une tâche directement depuis le Gantt
+  async function addTask(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newTitre.trim()) return
+    if (newFin < newDebut) { toast.error('La date de fin doit être après le début'); return }
+    setAdding(true)
+    const supabase = createClient()
+    const { error } = await supabase.from('project_tasks').insert({
+      project_id: projectId,
+      titre: newTitre.trim(),
+      phase_id: newPhase === NONE ? null : newPhase,
+      date_debut: newDebut,
+      date_fin: newFin,
+      ordre: localTasks.length,
+    })
+    setAdding(false)
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success('Tâche ajoutée au planning')
+      setNewTitre('')
+      router.refresh()
+    }
+  }
+
   const vide = ganttTasks.length === 0
 
   return (
@@ -246,6 +311,11 @@ export function ProjectGantt({
         <CardTitle className="text-base flex items-center gap-2">
           <GanttChartSquare className="h-4 w-4 text-[#534AB7]" />
           Planning (Gantt)
+          {localTasks.length > 0 && (
+            <span className="text-xs font-medium text-[#534AB7] bg-[#EEEBFA] px-2 py-0.5 rounded-full">
+              Réalisation : {realisation} %
+            </span>
+          )}
           {conflicts.length > 0 && (
             <span className="flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
               <AlertTriangle className="h-3 w-3" />
@@ -253,15 +323,29 @@ export function ProjectGantt({
             </span>
           )}
         </CardTitle>
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-          {([['Jour', 'Day'], ['Semaine', 'Week'], ['Mois', 'Month']] as const).map(([label, mode]) => (
-            <button key={label} onClick={() => setViewMode(mode)}
-              className={`text-xs px-2.5 py-1 rounded-md transition-colors ${
-                viewMode === mode ? 'bg-white shadow-sm font-medium' : 'text-gray-500 hover:text-gray-800'
-              }`}>
-              {label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowCritical((v) => !v)}
+            title="Met en rouge les tâches sans marge : les retarder retarde la fin du projet"
+            className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+              showCritical
+                ? 'bg-red-50 border-red-300 text-red-700 font-medium'
+                : 'border-gray-200 text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <Route className="h-3.5 w-3.5" />
+            Chemin critique
+          </button>
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            {([['Jour', 'Day'], ['Semaine', 'Week'], ['Mois', 'Month']] as const).map(([label, mode]) => (
+              <button key={label} onClick={() => setViewMode(mode)}
+                className={`text-xs px-2.5 py-1 rounded-md transition-colors ${
+                  viewMode === mode ? 'bg-white shadow-sm font-medium' : 'text-gray-500 hover:text-gray-800'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -303,15 +387,56 @@ export function ProjectGantt({
               </div>
             )}
             <div className="flex flex-wrap gap-4 mt-3 text-xs text-gray-500">
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#9ca3af]" />À faire</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#3b82f6]" />En cours</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#22c55e]" />Fait</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#ef4444]" />Bloqué</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rotate-45 bg-[#f59e0b]" />Jalon</span>
+              {showCritical ? (
+                <>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#dc2626]" />Critique (aucune marge)</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#cbd5e1]" />Avec marge</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rotate-45 bg-[#f59e0b]" />Jalon</span>
+                </>
+              ) : (
+                <>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#9ca3af]" />À faire</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#3b82f6]" />En cours</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#22c55e]" />Fait</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#ef4444]" />Bloqué</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rotate-45 bg-[#f59e0b]" />Jalon</span>
+                </>
+              )}
               <span className="ml-auto">Glissez une barre = sauvegarde auto · clic sur un jalon = détails.</span>
             </div>
           </>
         )}
+
+        {/* Ajout rapide d'une tâche, directement dans le planning */}
+        <form onSubmit={addTask} className="flex flex-wrap items-end gap-2 mt-3 pt-3 border-t">
+          <div className="flex-1 min-w-[180px]">
+            <label className="text-xs text-gray-500">Nouvelle tâche</label>
+            <Input value={newTitre} onChange={(e) => setNewTitre(e.target.value)}
+              placeholder="ex: Cadrage des besoins" className="h-9" />
+          </div>
+          <div className="w-40">
+            <label className="text-xs text-gray-500">Phase</label>
+            <Select value={newPhase} onValueChange={(v) => setNewPhase(v ?? NONE)}>
+              <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="— Aucune —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>— Aucune phase —</SelectItem>
+                {localPhases.map((p) => <SelectItem key={p.id} value={p.id}>{p.titre}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Début</label>
+            <Input type="date" value={newDebut} onChange={(e) => setNewDebut(e.target.value)} className="h-9 text-xs" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Fin</label>
+            <Input type="date" value={newFin} onChange={(e) => setNewFin(e.target.value)} className="h-9 text-xs" />
+          </div>
+          <Button type="submit" size="sm" disabled={adding || !newTitre.trim()} className="h-9">
+            <Plus className="h-4 w-4 mr-1" />
+            Ajouter
+          </Button>
+        </form>
       </CardContent>
 
       <GanttTooltip milestone={selectedMilestone} onClose={() => setSelectedMilestone(null)} />
