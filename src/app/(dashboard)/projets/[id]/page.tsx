@@ -150,7 +150,7 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
         phases={phases ?? []}
         collaborateurs={collaborateurs ?? []}
       />
-      <DependenciesManager tasks={tasksList} dependencies={dependencies ?? []} />
+      <DependenciesManager projectId={project.id} tasks={tasksList} dependencies={dependencies ?? []} />
 
       {/* Missions rattachées (exécution + temps) */}
       <Card>

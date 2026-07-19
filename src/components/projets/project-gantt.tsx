@@ -25,10 +25,12 @@ import type {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { GanttChartSquare } from 'lucide-react'
 import { GanttTooltip } from '@/components/projets/gantt-tooltip'
+import { findDependencyConflicts, toLocalISO } from '@/lib/gantt-deps'
 import {
   updateTaskDates, updateMilestoneDate, updatePhaseWithTasks, updateTaskProgress,
 } from '@/app/actions/gantt'
 import { toast } from 'sonner'
+import { AlertTriangle } from 'lucide-react'
 
 const Gantt = dynamic(() => import('gantt-task-react').then((m) => m.Gantt), { ssr: false })
 
@@ -56,12 +58,15 @@ function toDate(d: string | null): Date | null {
   const dt = new Date(d + 'T00:00:00')
   return isNaN(dt.getTime()) ? null : dt
 }
+// Formatage en date LOCALE : toISOString() convertit en UTC et ferait
+// reculer d'un jour toute date à minuit dans un fuseau à l'est de Greenwich
+// (ex. France) — le drag & drop enregistrerait la veille de ce qui est affiché.
 function toISO(d: Date): string {
-  return d.toISOString().split('T')[0]
+  return toLocalISO(d)
 }
 function addDays(iso: string, days: number): string {
   const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + days)
-  return d.toISOString().split('T')[0]
+  return toLocalISO(d)
 }
 function diffDays(a: string, b: string): number {
   return Math.round((new Date(b + 'T00:00:00').getTime() - new Date(a + 'T00:00:00').getTime()) / 86400000)
@@ -84,6 +89,16 @@ export function ProjectGantt({
   const collabById = useMemo(
     () => Object.fromEntries(collaborateurs.map((c) => [c.id, c])),
     [collaborateurs]
+  )
+
+  // Conflits de dépendances : successeur qui commence avant la fin de son prérequis
+  const conflicts = useMemo(
+    () => findDependencyConflicts(localTasks, dependencies),
+    [localTasks, dependencies]
+  )
+  const conflictTaskIds = useMemo(
+    () => new Set(conflicts.map((c) => c.successor.id)),
+    [conflicts]
   )
 
   // Construction des tâches Gantt : phase (groupe) → ses tâches, puis jalons en bas
@@ -139,9 +154,10 @@ export function ProjectGantt({
       const resp = t.responsable_id ? collabById[t.responsable_id] : null
       const color = STATUT_COLOR[t.statut] ?? '#3b82f6'
       const deps = dependencies.filter((d) => d.successor_id === t.id).map((d) => `task_${d.predecessor_id}`)
+      const baseName = resp ? `[${initials(resp.nom)}] ${t.titre}` : t.titre
       return {
         id: `task_${t.id}`,
-        name: resp ? `[${initials(resp.nom)}] ${t.titre}` : t.titre,
+        name: conflictTaskIds.has(t.id) ? `⚠ ${baseName}` : baseName,
         start: toDate(t.date_debut)!,
         end: toDate(t.date_fin)!,
         type: 'task',
@@ -155,7 +171,7 @@ export function ProjectGantt({
         },
       }
     }
-  }, [localPhases, localTasks, localMilestones, dependencies, collabById])
+  }, [localPhases, localTasks, localMilestones, dependencies, collabById, conflictTaskIds])
 
   // --- Handlers (optimistic + rollback) ---
   async function handleDateChange(task: GanttTask) {
@@ -167,7 +183,18 @@ export function ProjectGantt({
 
     if (kind === 'task') {
       const prev = localTasks
-      setLocalTasks((ts) => ts.map((t) => (t.id === id ? { ...t, date_debut: newDebut, date_fin: newFin } : t)))
+      const updated = localTasks.map((t) => (t.id === id ? { ...t, date_debut: newDebut, date_fin: newFin } : t))
+      setLocalTasks(updated)
+      // Avertit (sans bloquer) si le déplacement viole une dépendance,
+      // que la tâche déplacée soit successeur ou prérequis.
+      const broken = findDependencyConflicts(updated, dependencies)
+        .filter((c) => c.successor.id === id || c.predecessor.id === id)
+      if (broken.length > 0) {
+        const c = broken[0]
+        toast.warning(
+          `Dépendance violée : « ${c.successor.titre} » démarre avant la fin de « ${c.predecessor.titre} ». Voir le panneau Dépendances pour recaler.`
+        )
+      }
       const res = await updateTaskDates(id, newDebut, newFin, projectId)
       if (!res.ok) { setLocalTasks(prev); toast.error('Échec de la mise à jour de la tâche') }
     } else if (kind === 'phase') {
@@ -217,8 +244,14 @@ export function ProjectGantt({
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="text-base flex items-center gap-2">
-          <GanttChartSquare className="h-4 w-4 text-blue-500" />
+          <GanttChartSquare className="h-4 w-4 text-[#534AB7]" />
           Planning (Gantt)
+          {conflicts.length > 0 && (
+            <span className="flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+              <AlertTriangle className="h-3 w-3" />
+              {conflicts.length} conflit{conflicts.length > 1 ? 's' : ''}
+            </span>
+          )}
         </CardTitle>
         <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
           {([['Jour', 'Day'], ['Semaine', 'Week'], ['Mois', 'Month']] as const).map(([label, mode]) => (
@@ -250,9 +283,25 @@ export function ProjectGantt({
                 listCellWidth="220px"
                 columnWidth={viewMode === 'Month' ? 200 : viewMode === 'Week' ? 140 : 60}
                 barCornerRadius={4}
-                todayColor="rgba(59,130,246,0.10)"
+                todayColor="rgba(83,74,183,0.10)"
               />
             </div>
+            {conflicts.length > 0 && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-medium text-amber-700 flex items-center gap-1.5 mb-1">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Conflits de dépendances (⚠ dans le Gantt)
+                </p>
+                <ul className="text-xs text-amber-700 space-y-0.5 pl-5 list-disc">
+                  {conflicts.map((c) => (
+                    <li key={c.dep.id}>
+                      « {c.successor.titre} » démarre avant la fin de « {c.predecessor.titre} » —
+                      recalage proposé dans le panneau Dépendances ci-dessous.
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div className="flex flex-wrap gap-4 mt-3 text-xs text-gray-500">
               <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#9ca3af]" />À faire</span>
               <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#3b82f6]" />En cours</span>

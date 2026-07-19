@@ -8,7 +8,12 @@ type ActionResult = { ok: true } | { ok: false; error: string }
 function addDays(iso: string, days: number): string {
   const d = new Date(iso + 'T00:00:00')
   d.setDate(d.getDate() + days)
-  return d.toISOString().split('T')[0]
+  // Formatage en date locale : toISOString() (UTC) ferait reculer d'un jour
+  // les fuseaux à l'est de Greenwich (minuit local = veille en UTC).
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 function diffDays(fromISO: string, toISO: string): number {
