@@ -30,8 +30,12 @@ import { Button } from '@/components/ui/button'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { GanttChartSquare, AlertTriangle, Plus, Route } from 'lucide-react'
+import {
+  GanttChartSquare, AlertTriangle, Plus, Route, Network,
+  Maximize2, Minimize2, Printer, ZoomIn, ZoomOut,
+} from 'lucide-react'
 import { GanttTooltip } from '@/components/projets/gantt-tooltip'
+import { PertView } from '@/components/projets/pert-view'
 import {
   findDependencyConflicts, toLocalISO, computeCriticalPath, completionRate,
 } from '@/lib/gantt-deps'
@@ -90,6 +94,17 @@ export function ProjectGantt({
   const [viewMode, setViewMode] = useState<VM>('Week')
   const [selectedMilestone, setSelectedMilestone] = useState<ProjectMilestone | null>(null)
   const [showCritical, setShowCritical] = useState(false)
+  const [view, setView] = useState<'gantt' | 'pert'>('gantt')
+  const [zoom, setZoom] = useState(1) // facteur de largeur des colonnes (0.5 → 2)
+  const [fullscreen, setFullscreen] = useState(false)
+
+  // Échap quitte le plein écran
+  useEffect(() => {
+    if (!fullscreen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFullscreen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [fullscreen])
 
   // Formulaire d'ajout rapide de tâche
   const NONE = '__none__'
@@ -137,14 +152,18 @@ export function ProjectGantt({
   // Taux de réalisation global (pondéré par la durée des tâches)
   const realisation = useMemo(() => completionRate(localTasks), [localTasks])
 
-  // Construction des tâches Gantt : phase (groupe) → ses tâches, puis jalons en bas
+  // Construction des lignes du Gantt en ORDRE CHRONOLOGIQUE :
+  // chaque « bloc » (phase + ses tâches, tâche isolée, jalon) est daté puis
+  // trié — un jalon s'insère donc à sa place dans le temps au lieu d'être
+  // empilé en bas de la liste.
   const ganttTasks: GanttTask[] = useMemo(() => {
-    const items: GanttTask[] = []
+    type Block = { start: string; prio: number; items: GanttTask[] }
+    const blocks: Block[] = []
     const phasesAvecDates = localPhases.filter((p) => toDate(p.date_debut) && toDate(p.date_fin))
     const phaseIdsDates = new Set(phasesAvecDates.map((p) => p.id))
 
     for (const p of phasesAvecDates) {
-      items.push({
+      const items: GanttTask[] = [{
         id: `phase_${p.id}`,
         name: p.titre,
         start: toDate(p.date_debut)!,
@@ -154,38 +173,43 @@ export function ProjectGantt({
         progress: completionRate(localTasks, p.id),
         hideChildren: false,
         styles: { backgroundColor: p.couleur, progressColor: shade(p.couleur), backgroundSelectedColor: p.couleur },
-      })
-      // tâches de la phase
-      for (const t of localTasks.filter((t) => t.phase_id === p.id)) {
-        const s = toDate(t.date_debut), e = toDate(t.date_fin)
-        if (!s || !e) continue
-        items.push(buildTaskBar(t, `phase_${p.id}`))
-      }
+      }]
+      // tâches de la phase, triées par date de début
+      const enfants = localTasks
+        .filter((t) => t.phase_id === p.id && toDate(t.date_debut) && toDate(t.date_fin))
+        .sort((a, b) => a.date_debut!.localeCompare(b.date_debut!))
+      for (const t of enfants) items.push(buildTaskBar(t, `phase_${p.id}`))
+      blocks.push({ start: p.date_debut!, prio: 0, items })
     }
 
-    // tâches sans phase (ou phase sans dates) → hors groupe
+    // tâches sans phase (ou phase sans dates) → bloc individuel
     for (const t of localTasks) {
       if (t.phase_id && phaseIdsDates.has(t.phase_id)) continue
-      const s = toDate(t.date_debut), e = toDate(t.date_fin)
-      if (!s || !e) continue
-      items.push(buildTaskBar(t, undefined))
+      if (!toDate(t.date_debut) || !toDate(t.date_fin)) continue
+      blocks.push({ start: t.date_debut!, prio: 0, items: [buildTaskBar(t, undefined)] })
     }
 
-    // jalons en bas
+    // jalons → bloc individuel, inséré chronologiquement
+    // (prio 1 : à date égale, le jalon s'affiche après la tâche qu'il conclut)
     for (const m of localMilestones) {
       const d = toDate(m.date_echeance)
       if (!d) continue
-      items.push({
-        id: `ms_${m.id}`,
-        name: m.titre,
-        start: d, end: d,
-        type: 'milestone',
-        progress: 0,
-        styles: { backgroundColor: '#f59e0b', backgroundSelectedColor: '#d97706' },
+      blocks.push({
+        start: m.date_echeance!,
+        prio: 1,
+        items: [{
+          id: `ms_${m.id}`,
+          name: m.titre,
+          start: d, end: d,
+          type: 'milestone',
+          progress: 0,
+          styles: { backgroundColor: '#f59e0b', backgroundSelectedColor: '#d97706' },
+        }],
       })
     }
 
-    return items
+    blocks.sort((a, b) => a.start.localeCompare(b.start) || a.prio - b.prio)
+    return blocks.flatMap((b) => b.items)
 
     function buildTaskBar(t: ProjectTask, project: string | undefined): GanttTask {
       const resp = t.responsable_id ? collabById[t.responsable_id] : null
@@ -306,8 +330,19 @@ export function ProjectGantt({
   const vide = ganttTasks.length === 0
 
   return (
+    <div className={fullscreen ? 'fixed inset-0 z-50 bg-white overflow-auto p-4' : ''}>
+    {/* Styles d'impression : seul le planning est imprimé, en paysage */}
+    <style>{`
+      @media print {
+        @page { size: landscape; margin: 10mm; }
+        body * { visibility: hidden !important; }
+        .gantt-print-area, .gantt-print-area * { visibility: visible !important; }
+        .gantt-print-area { position: absolute !important; left: 0; top: 0; width: 100%; overflow: visible !important; }
+        .gantt-print-area .overflow-x-auto, .gantt-print-area .overflow-auto { overflow: visible !important; }
+      }
+    `}</style>
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-3">
+      <CardHeader className="flex flex-row items-center justify-between pb-3 flex-wrap gap-2">
         <CardTitle className="text-base flex items-center gap-2">
           <GanttChartSquare className="h-4 w-4 text-[#534AB7]" />
           Planning (Gantt)
@@ -323,39 +358,92 @@ export function ProjectGantt({
             </span>
           )}
         </CardTitle>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowCritical((v) => !v)}
-            title="Met en rouge les tâches sans marge : les retarder retarde la fin du projet"
-            className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
-              showCritical
-                ? 'bg-red-50 border-red-300 text-red-700 font-medium'
-                : 'border-gray-200 text-gray-500 hover:text-gray-800'
-            }`}
-          >
-            <Route className="h-3.5 w-3.5" />
-            Chemin critique
-          </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Bascule Gantt / PERT */}
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-            {([['Jour', 'Day'], ['Semaine', 'Week'], ['Mois', 'Month']] as const).map(([label, mode]) => (
-              <button key={label} onClick={() => setViewMode(mode)}
-                className={`text-xs px-2.5 py-1 rounded-md transition-colors ${
-                  viewMode === mode ? 'bg-white shadow-sm font-medium' : 'text-gray-500 hover:text-gray-800'
-                }`}>
-                {label}
-              </button>
-            ))}
+            <button onClick={() => setView('gantt')}
+              className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-md transition-colors ${
+                view === 'gantt' ? 'bg-white shadow-sm font-medium' : 'text-gray-500 hover:text-gray-800'
+              }`}>
+              <GanttChartSquare className="h-3.5 w-3.5" />
+              Gantt
+            </button>
+            <button onClick={() => setView('pert')}
+              className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-md transition-colors ${
+                view === 'pert' ? 'bg-white shadow-sm font-medium' : 'text-gray-500 hover:text-gray-800'
+              }`}>
+              <Network className="h-3.5 w-3.5" />
+              PERT
+            </button>
           </div>
+
+          {view === 'gantt' && (
+            <>
+              <button
+                onClick={() => setShowCritical((v) => !v)}
+                title="Met en rouge les tâches sans marge : les retarder retarde la fin du projet"
+                className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+                  showCritical
+                    ? 'bg-red-50 border-red-300 text-red-700 font-medium'
+                    : 'border-gray-200 text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                <Route className="h-3.5 w-3.5" />
+                Chemin critique
+              </button>
+              <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+                {([['Jour', 'Day'], ['Semaine', 'Week'], ['Mois', 'Month']] as const).map(([label, mode]) => (
+                  <button key={label} onClick={() => setViewMode(mode)}
+                    className={`text-xs px-2.5 py-1 rounded-md transition-colors ${
+                      viewMode === mode ? 'bg-white shadow-sm font-medium' : 'text-gray-500 hover:text-gray-800'
+                    }`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {/* Curseur de largeur des colonnes */}
+              <div className="flex items-center gap-1.5 px-2" title="Largeur des colonnes">
+                <ZoomOut className="h-3.5 w-3.5 text-gray-400" />
+                <input
+                  type="range" min="50" max="200" step="10"
+                  value={Math.round(zoom * 100)}
+                  onChange={(e) => setZoom(Number(e.target.value) / 100)}
+                  className="w-24 accent-[#534AB7]"
+                  aria-label="Largeur des colonnes du Gantt"
+                />
+                <ZoomIn className="h-3.5 w-3.5 text-gray-400" />
+              </div>
+            </>
+          )}
+
+          <button
+            onClick={() => window.print()}
+            title="Imprimer le planning (format paysage)"
+            className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-800 transition-colors"
+          >
+            <Printer className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => setFullscreen((v) => !v)}
+            title={fullscreen ? 'Quitter le plein écran (Échap)' : 'Agrandir pour une meilleure lecture'}
+            className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-800 transition-colors"
+          >
+            {fullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+          </button>
         </div>
       </CardHeader>
       <CardContent>
-        {vide ? (
+        {view === 'pert' ? (
+          <div className="gantt-print-area">
+            <PertView tasks={localTasks} dependencies={dependencies} />
+          </div>
+        ) : vide ? (
           <p className="text-sm text-gray-400 py-8 text-center">
             Ajoutez des dates (début/fin) à vos phases, tâches ou jalons pour afficher le planning.
           </p>
         ) : (
           <>
-            <div className="overflow-x-auto border rounded-lg">
+            <div className="overflow-x-auto border rounded-lg gantt-print-area">
               <Gantt
                 tasks={ganttTasks}
                 /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
@@ -365,7 +453,7 @@ export function ProjectGantt({
                 onProgressChange={handleProgressChange}
                 onClick={handleClick}
                 listCellWidth="220px"
-                columnWidth={viewMode === 'Month' ? 200 : viewMode === 'Week' ? 140 : 60}
+                columnWidth={Math.round((viewMode === 'Month' ? 200 : viewMode === 'Week' ? 140 : 60) * zoom)}
                 barCornerRadius={4}
                 todayColor="rgba(83,74,183,0.10)"
               />
@@ -441,6 +529,7 @@ export function ProjectGantt({
 
       <GanttTooltip milestone={selectedMilestone} onClose={() => setSelectedMilestone(null)} />
     </Card>
+    </div>
   )
 }
 

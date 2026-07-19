@@ -95,20 +95,38 @@ export function findDependencyConflicts(
   return out
 }
 
+export interface CpmResult {
+  /** Ordre topologique des tâches datées (les cycles éventuels sont écartés). */
+  order: string[]
+  /** Early start / early finish / late start / late finish, en jours relatifs. */
+  es: Map<string, number>
+  ef: Map<string, number>
+  ls: Map<string, number>
+  lf: Map<string, number>
+  /** Marge (LS − ES) par tâche ; 0 = critique. */
+  slack: Map<string, number>
+  /** Durée par tâche (jours pleins) et longueur totale du projet. */
+  dur: Map<string, number>
+  projectLength: number
+  /** Profondeur topologique (rang de colonne pour un diagramme PERT). */
+  depth: Map<string, number>
+}
+
 /**
- * Chemin critique (méthode CPM) sur le graphe de dépendances des tâches datées.
+ * Analyse CPM complète sur le graphe de dépendances des tâches datées.
  * Durées en jours pleins (début et fin inclus). Passe avant (ES/EF) puis passe
  * arrière (LS/LF) en ordre topologique ; une tâche est critique si sa marge
  * (LS − ES) est nulle : la retarder retarde la fin du projet.
  * Les cycles éventuels (théoriquement impossibles, refusés à l'insertion)
  * sont ignorés par sécurité.
  */
-export function computeCriticalPath(
-  tasks: ProjectTask[],
-  deps: TaskDependency[]
-): Set<string> {
+export function computeCpm(tasks: ProjectTask[], deps: TaskDependency[]): CpmResult {
+  const empty: CpmResult = {
+    order: [], es: new Map(), ef: new Map(), ls: new Map(), lf: new Map(),
+    slack: new Map(), dur: new Map(), projectLength: 0, depth: new Map(),
+  }
   const dated = tasks.filter((t) => t.date_debut && t.date_fin)
-  if (dated.length === 0) return new Set()
+  if (dated.length === 0) return empty
   const ids = new Set(dated.map((t) => t.id))
   const dur = new Map<string, number>(
     dated.map((t) => [t.id, Math.max(1, diffDays(t.date_debut!, t.date_fin!) + 1)])
@@ -161,7 +179,24 @@ export function computeCriticalPath(
     ls.set(id, end - dur.get(id)!)
   }
 
-  return new Set(order.filter((id) => ls.get(id) === es.get(id)))
+  // Marges + profondeur topologique (colonnes d'un diagramme PERT)
+  const slack = new Map<string, number>()
+  const depth = new Map<string, number>()
+  for (const id of order) {
+    slack.set(id, (ls.get(id) ?? 0) - (es.get(id) ?? 0))
+    depth.set(id, Math.max(-1, ...(preds.get(id) ?? []).map((p) => depth.get(p) ?? -1)) + 1)
+  }
+
+  return { order, es, ef, ls, lf, slack, dur, projectLength, depth }
+}
+
+/** Identifiants des tâches critiques (marge nulle) — voir computeCpm. */
+export function computeCriticalPath(
+  tasks: ProjectTask[],
+  deps: TaskDependency[]
+): Set<string> {
+  const cpm = computeCpm(tasks, deps)
+  return new Set(cpm.order.filter((id) => cpm.slack.get(id) === 0))
 }
 
 /**
