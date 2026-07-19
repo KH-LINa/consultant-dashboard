@@ -222,7 +222,14 @@ export default function Vitrine() {
               <h2>Khelaf FEDILA</h2>
               <p>Consultant Lean &amp; IA Industrielle, j&apos;aide les entreprises industrielles à conjuguer deux mondes qui se parlent rarement : l&apos;amélioration continue héritée du terrain, et les possibilités concrètes de l&apos;intelligence artificielle.</p>
               <p>Ma conviction : l&apos;IA n&apos;a de valeur que posée sur des processus sains. C&apos;est pourquoi j&apos;interviens d&apos;abord comme praticien du Lean, avant d&apos;introduire l&apos;automatisation là où elle apporte un vrai gain.</p>
-              <p style={{ marginTop: 20, fontSize: 15 }}><span className="placeholder">[À COMPLÉTER : parcours, années d&apos;expérience, secteurs / clients de référence]</span></p>
+              <p>Fort de <strong>17 ans en environnement industriel chez Brandt</strong> (électroménager), dont 7 ans en méthodes et industrialisation — en France et à l&apos;international (Algérie) — j&apos;ai piloté l&apos;amélioration continue au plus près du terrain : gammes et standards de travail, chantiers 5S / SMED, AMDEC process, pilotage des KPI (TRS, rebuts, productivité).</p>
+              <p>Un résultat concret parmi d&apos;autres : <strong>+15 % de productivité et -30 % de rebuts</strong> sur une ligne de fabrication. Certifié CNAM « Piloter l&apos;amélioration continue de la performance », j&apos;associe aujourd&apos;hui cette expertise Lean éprouvée aux possibilités de l&apos;IA.</p>
+              <ul className="about-facts">
+                <li>17 ans en industrie</li>
+                <li>+15 % productivité · -30 % rebuts</li>
+                <li>France &amp; international</li>
+                <li>Certifié CNAM</li>
+              </ul>
             </div>
           </div>
         </section>
@@ -235,9 +242,9 @@ export default function Vitrine() {
               <h2>Demandez votre diagnostic gratuit.</h2>
               <p>Décrivez-moi votre contexte en quelques lignes. Je vous réponds sous 48h pour cadrer un premier échange, sans engagement.</p>
               <div className="contact-list">
-                <div><span className="lbl">Email</span><span className="placeholder">[À COMPLÉTER : email pro]</span></div>
-                <div><span className="lbl">Téléphone</span><span className="placeholder">[À COMPLÉTER : téléphone]</span></div>
-                <div><span className="lbl">LinkedIn</span><span className="placeholder">[À COMPLÉTER : profil LinkedIn]</span></div>
+                <div><span className="lbl">Email</span><a href="mailto:k.fedila@gmail.com">k.fedila@gmail.com</a></div>
+                <div><span className="lbl">Téléphone</span><a href="tel:+33651235074">06 51 23 50 74</a></div>
+                <div><span className="lbl">Zone</span><span>Orléans &amp; Centre-Val de Loire</span></div>
               </div>
             </div>
             <form onSubmit={handleSubmit} noValidate>
