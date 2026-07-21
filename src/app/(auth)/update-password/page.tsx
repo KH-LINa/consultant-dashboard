@@ -14,11 +14,15 @@ export default function UpdatePasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
 
   // S'assurer qu'on ne puisse pas rester sur cette page si on n'a pas de session
   // Normalement le lien reçu par email connecte l'utilisateur
   useEffect(() => {
+    // Créé ici (et non au rendu du composant) : cet appel exige les variables
+    // NEXT_PUBLIC_SUPABASE_*, absentes lors du prérendu statique de build sans
+    // env vars — le créer au rendu ferait échouer le build (ex. previews Vercel).
+    // useEffect ne s'exécute jamais côté serveur/prérendu, donc sans risque ici.
+    const supabase = createClient()
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
@@ -27,7 +31,7 @@ export default function UpdatePasswordPage() {
       }
     }
     checkSession()
-  }, [router, supabase])
+  }, [router])
 
   async function handleUpdatePassword(e: React.FormEvent) {
     e.preventDefault()
@@ -44,6 +48,7 @@ export default function UpdatePasswordPage() {
 
     setLoading(true)
 
+    const supabase = createClient()
     const { error } = await supabase.auth.updateUser({
       password: password
     })

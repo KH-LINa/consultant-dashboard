@@ -14,12 +14,15 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
 
+    // Créé ici (et non au rendu du composant) : cet appel exige les variables
+    // NEXT_PUBLIC_SUPABASE_*, absentes lors du prérendu statique de build sans
+    // env vars — le créer au rendu ferait échouer le build (ex. previews Vercel).
+    const supabase = createClient()
     const { error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) {
