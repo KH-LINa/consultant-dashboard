@@ -40,7 +40,13 @@ export function ContactsTable({ contacts }: { contacts: Contact[] }) {
     setDeleting(true)
     const { error } = await supabase.from('contacts').delete().eq('id', deleteId)
     if (error) {
-      toast.error('Erreur lors de la suppression')
+      if (error.code === '23503') {
+        toast.error(
+          'Impossible de supprimer : ce contact est lié à une ou plusieurs factures (documents légaux conservés). Marquez-le plutôt comme « inactif ».'
+        )
+      } else {
+        toast.error(`Erreur lors de la suppression : ${error.message}`)
+      }
     } else {
       toast.success('Contact supprimé')
       router.refresh()
