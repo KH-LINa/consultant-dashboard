@@ -68,9 +68,6 @@ export async function POST(request: NextRequest) {
       reply_to = `${local}+devis-${quote.public_token}@${domain}`
     }
 
-    // Marquer comme envoyé
-    await supabase.from('quotes').update({ statut: 'envoyé' }).eq('id', id)
-
   } else {
     const { data: invoice } = await supabase.from('invoices').select('*').eq('id', id).single()
     if (!invoice) return NextResponse.json({ error: 'Facture introuvable' }, { status: 404 })
@@ -88,9 +85,6 @@ export async function POST(request: NextRequest) {
       email: settings.consultant_email,
       telephone: settings.consultant_telephone,
     }) as any)
-
-    // Marquer comme envoyée
-    await supabase.from('invoices').update({ statut: 'envoyée' }).eq('id', id)
   }
 
   const resend = new Resend(settings.resend_api_key)
@@ -126,6 +120,14 @@ export async function POST(request: NextRequest) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // Statut mis à jour uniquement après un envoi Resend réussi — sinon le
+  // document reste marqué comme non envoyé, cohérent avec la réalité.
+  if (type === 'devis') {
+    await supabase.from('quotes').update({ statut: 'envoyé' }).eq('id', id)
+  } else {
+    await supabase.from('invoices').update({ statut: 'envoyée' }).eq('id', id)
   }
 
   return NextResponse.json({ success: true })
