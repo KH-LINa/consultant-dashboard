@@ -184,6 +184,42 @@ export interface Quote {
   contact?: Contact
 }
 
+// ── Module Agents (orchestrateur + sous-agents) ──────────────────────────
+
+export interface AgentConfig {
+  id: string
+  slug: string
+  nom: string
+  description: string | null
+  system_prompt: string
+  model: string
+  max_tokens: number
+  actif: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface AgentRunAppel {
+  slug: string
+  nom?: string
+  instruction?: string
+  statut: 'succes' | 'erreur'
+  erreur?: string
+}
+
+export interface AgentRun {
+  id: string
+  demande: string
+  agents_appeles: AgentRunAppel[]
+  resultat: string | null
+  tokens_input: number
+  tokens_output: number
+  duree_ms: number
+  statut: 'succes' | 'erreur'
+  erreur: string | null
+  created_at: string
+}
+
 export type ContractStatus = 'brouillon' | 'envoye' | 'signe' | 'archive'
 export type ContractOffer = 'consulting' | 'automatisation' | 'solution_centralisee'
 
