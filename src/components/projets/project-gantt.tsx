@@ -57,6 +57,24 @@ const STATUT_COLOR: Record<ProjectTaskStatus, string> = {
   bloque: '#ef4444',   // rouge
 }
 
+const STATUT_LABEL: Record<ProjectTaskStatus, string> = {
+  a_faire: 'À faire',
+  en_cours: 'En cours',
+  fait: 'Fait',
+  bloque: 'Bloqué',
+}
+
+const STATUT_BADGE: Record<ProjectTaskStatus, string> = {
+  a_faire: 'bg-gray-100 text-gray-600',
+  en_cours: 'bg-blue-100 text-blue-700',
+  fait: 'bg-green-100 text-green-700',
+  bloque: 'bg-red-100 text-red-700',
+}
+
+function fmtTooltipDate(d: Date): string {
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
 interface ProjectGanttProps {
   projectId: string
   phases: ProjectPhase[]
@@ -255,6 +273,64 @@ export function ProjectGantt({
       }
     }
   }, [localPhases, localTasks, localMilestones, dependencies, collabById, conflictTaskIds, showCritical, criticalIds, collapsedPhases])
+
+  // Info-bulle au survol : la lib n'expose que {name, start, end, progress} par
+  // défaut (et en anglais) — on reconstitue les tâches/phases/jalons d'origine
+  // par id pour afficher statut et responsable en français.
+  const taskById = useMemo(() => new Map(localTasks.map((t) => [t.id, t])), [localTasks])
+  const milestoneById = useMemo(() => new Map(localMilestones.map((m) => [m.id, m])), [localMilestones])
+
+  const TooltipContent = useMemo(() => {
+    const Comp: React.FC<{ task: GanttTask; fontSize: string; fontFamily: string }> = ({ task, fontSize, fontFamily }) => {
+      const m = task.id.match(/^(phase|task|ms)_(.+)$/)
+      const kind = m?.[1]
+      const id = m?.[2]
+      const style = { fontFamily, fontSize }
+      const box = 'rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-lg max-w-[240px]'
+
+      if (kind === 'ms') {
+        const ms = id ? milestoneById.get(id) : undefined
+        return (
+          <div style={style} className={box}>
+            <p className="font-semibold text-gray-800 flex items-center gap-1">
+              <span className="text-amber-500">◆</span>{task.name}
+            </p>
+            <p className="text-gray-500 mt-0.5">Échéance : {fmtTooltipDate(task.start)}</p>
+            {ms?.livrable && <p className="text-gray-500">Livrable : {ms.livrable}</p>}
+          </div>
+        )
+      }
+
+      if (kind === 'phase') {
+        return (
+          <div style={style} className={box}>
+            <p className="font-semibold text-gray-800">{task.name}</p>
+            <p className="text-gray-500 mt-0.5">{fmtTooltipDate(task.start)} → {fmtTooltipDate(task.end)}</p>
+            <p className="text-gray-500">Avancement : {Math.round(task.progress)} %</p>
+          </div>
+        )
+      }
+
+      const t = id ? taskById.get(id) : undefined
+      const resp = t?.responsable_id ? collabById[t.responsable_id] : null
+      return (
+        <div style={style} className={box}>
+          <p className="font-semibold text-gray-800">{t?.titre ?? task.name}</p>
+          <p className="text-gray-500 mt-0.5">{fmtTooltipDate(task.start)} → {fmtTooltipDate(task.end)}</p>
+          <p className="text-gray-500">Avancement : {Math.round(task.progress)} %</p>
+          {t && (
+            <p className="mt-1">
+              <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${STATUT_BADGE[t.statut]}`}>
+                {STATUT_LABEL[t.statut]}
+              </span>
+            </p>
+          )}
+          {resp && <p className="text-gray-500 mt-0.5">Responsable : {resp.nom}</p>}
+        </div>
+      )
+    }
+    return Comp
+  }, [taskById, milestoneById, collabById])
 
   // --- Handlers (optimistic + rollback) ---
   async function handleDateChange(task: GanttTask) {
@@ -474,6 +550,7 @@ export function ProjectGantt({
                 onExpanderClick={(t) => togglePhase(t.id)}
                 TaskListHeader={TaskListHeader}
                 TaskListTable={TaskListTable}
+                TooltipContent={TooltipContent}
                 listCellWidth="220px"
                 columnWidth={Math.round((viewMode === 'Month' ? 200 : viewMode === 'Week' ? 140 : 60) * zoom)}
                 barCornerRadius={4}
