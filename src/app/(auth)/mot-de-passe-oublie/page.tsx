@@ -14,11 +14,15 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
 
   async function handleResetPassword(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
+
+    // Créé ici (et non au rendu du composant) : cet appel exige les variables
+    // NEXT_PUBLIC_SUPABASE_*, absentes lors du prérendu statique de build sans
+    // env vars — le créer au rendu ferait échouer le build (ex. previews Vercel).
+    const supabase = createClient()
 
     // L'URL de redirection doit pointer vers la page qui gérera le nouveau mot de passe.
     const { error } = await supabase.auth.resetPasswordForEmail(email, {

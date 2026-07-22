@@ -11,22 +11,41 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 
+// Messages Supabase traduits en français ; toute autre erreur reçoit un
+// message générique plutôt que le texte brut (souvent en anglais).
+function messageErreurConnexion(message: string): string {
+  const m = message.toLowerCase()
+  if (m.includes('invalid login credentials')) {
+    return 'Email ou mot de passe incorrect.'
+  }
+  if (m.includes('email not confirmed')) {
+    return "Cette adresse email n'a pas encore été confirmée."
+  }
+  if (m.includes('too many requests') || m.includes('rate limit')) {
+    return 'Trop de tentatives. Réessayez dans quelques minutes.'
+  }
+  return 'Impossible de se connecter. Réessayez.'
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
 
+    // Créé ici (et non au rendu du composant) : cet appel exige les variables
+    // NEXT_PUBLIC_SUPABASE_*, absentes lors du prérendu statique de build sans
+    // env vars — le créer au rendu ferait échouer le build (ex. previews Vercel).
+    const supabase = createClient()
     const { error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) {
-      toast.error(error.message)
+      toast.error(messageErreurConnexion(error.message))
     } else {
       router.push('/dashboard')
       router.refresh()
