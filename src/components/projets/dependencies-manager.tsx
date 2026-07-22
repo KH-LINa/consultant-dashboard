@@ -27,11 +27,17 @@ function fmtDate(iso: string | null): string {
   return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
 }
 
+const NONE_TASK = '__none__'
+
 export function DependenciesManager({ projectId, tasks, dependencies }: DependenciesManagerProps) {
   const router = useRouter()
   const supabase = createClient()
-  const [pred, setPred] = useState('')
-  const [succ, setSucc] = useState('')
+  // NONE_TASK (et non '') : la valeur réinitialisée doit correspondre à un
+  // SelectItem existant, sinon le composant Select perd la correspondance
+  // interne entre valeur et item et cesse de réagir aux sélections suivantes —
+  // une seule dépendance pouvait alors être créée par chargement de page.
+  const [pred, setPred] = useState(NONE_TASK)
+  const [succ, setSucc] = useState(NONE_TASK)
   const [recalage, setRecalage] = useState<string | null>(null) // dep.id en cours de recalage
 
   const titreById = Object.fromEntries(tasks.map((t) => [t.id, t.titre]))
@@ -45,7 +51,7 @@ export function DependenciesManager({ projectId, tasks, dependencies }: Dependen
   )
 
   async function addDependency() {
-    if (!pred || !succ) { toast.error('Sélectionnez les deux tâches'); return }
+    if (pred === NONE_TASK || succ === NONE_TASK) { toast.error('Sélectionnez les deux tâches'); return }
     if (pred === succ) { toast.error('Une tâche ne peut pas dépendre d\'elle-même'); return }
     // Anti-cycle : refuse si un chemin succ →* pred existe déjà
     if (wouldCreateCycle(dependencies, pred, succ)) {
@@ -61,7 +67,7 @@ export function DependenciesManager({ projectId, tasks, dependencies }: Dependen
       toast.error(error.message.includes('duplicate') ? 'Cette dépendance existe déjà' : error.message)
     } else {
       toast.success('Dépendance ajoutée')
-      setPred(''); setSucc('')
+      setPred(NONE_TASK); setSucc(NONE_TASK)
       router.refresh()
     }
   }
@@ -154,13 +160,12 @@ export function DependenciesManager({ projectId, tasks, dependencies }: Dependen
         <div className="flex items-end gap-2 pt-2 border-t">
           <div className="flex-1">
             <label className="text-xs text-gray-500">D'abord (prérequis)</label>
-            <Select value={pred} onValueChange={(v) => setPred(v ?? '')}>
+            <Select value={pred} onValueChange={(v) => setPred(v ?? NONE_TASK)}>
               <SelectTrigger className="h-9">
-                <SelectValue placeholder="Tâche prérequise">
-                  {(v: string) => titreById[v] ?? 'Tâche prérequise'}
-                </SelectValue>
+                <SelectValue placeholder="Tâche prérequise" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={NONE_TASK}>— Tâche prérequise —</SelectItem>
                 {tasks.map((t) => <SelectItem key={t.id} value={t.id}>{t.titre}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -168,13 +173,12 @@ export function DependenciesManager({ projectId, tasks, dependencies }: Dependen
           <ArrowRight className="h-4 w-4 text-gray-400 mb-2.5" />
           <div className="flex-1">
             <label className="text-xs text-gray-500">Ensuite (dépend de)</label>
-            <Select value={succ} onValueChange={(v) => setSucc(v ?? '')}>
+            <Select value={succ} onValueChange={(v) => setSucc(v ?? NONE_TASK)}>
               <SelectTrigger className="h-9">
-                <SelectValue placeholder="Tâche suivante">
-                  {(v: string) => titreById[v] ?? 'Tâche suivante'}
-                </SelectValue>
+                <SelectValue placeholder="Tâche suivante" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={NONE_TASK}>— Tâche suivante —</SelectItem>
                 {tasks.map((t) => <SelectItem key={t.id} value={t.id}>{t.titre}</SelectItem>)}
               </SelectContent>
             </Select>

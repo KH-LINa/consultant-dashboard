@@ -23,6 +23,12 @@ const typeBadge: Record<string, string> = {
   inactif: 'bg-gray-100 text-gray-600',
 }
 
+function formatDateHeure(iso: string) {
+  return new Date(iso).toLocaleString('fr-FR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+}
+
 export function ContactsTable({ contacts }: { contacts: Contact[] }) {
   const router = useRouter()
   const supabase = createClient()
@@ -34,7 +40,13 @@ export function ContactsTable({ contacts }: { contacts: Contact[] }) {
     setDeleting(true)
     const { error } = await supabase.from('contacts').delete().eq('id', deleteId)
     if (error) {
-      toast.error('Erreur lors de la suppression')
+      if (error.code === '23503') {
+        toast.error(
+          'Impossible de supprimer : ce contact est lié à une ou plusieurs factures (documents légaux conservés). Marquez-le plutôt comme « inactif ».'
+        )
+      } else {
+        toast.error(`Erreur lors de la suppression : ${error.message}`)
+      }
     } else {
       toast.success('Contact supprimé')
       router.refresh()
@@ -62,6 +74,7 @@ export function ContactsTable({ contacts }: { contacts: Contact[] }) {
               <TableHead>Entreprise</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Téléphone</TableHead>
+              <TableHead>Reçu le</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -77,6 +90,9 @@ export function ContactsTable({ contacts }: { contacts: Contact[] }) {
                 <TableCell>{contact.entreprise ?? '—'}</TableCell>
                 <TableCell>{contact.email ?? '—'}</TableCell>
                 <TableCell>{contact.telephone ?? '—'}</TableCell>
+                <TableCell className="text-gray-500 text-sm whitespace-nowrap">
+                  {formatDateHeure(contact.created_at)}
+                </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-2">
                     <Button variant="ghost" size="sm" asChild>

@@ -35,7 +35,7 @@ export default function UpdatePasswordPage() {
 
   async function handleUpdatePassword(e: React.FormEvent) {
     e.preventDefault()
-    
+
     if (password !== confirmPassword) {
       toast.error("Les mots de passe ne correspondent pas.")
       return
