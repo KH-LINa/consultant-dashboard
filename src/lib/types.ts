@@ -93,6 +93,9 @@ export interface ProjectTask {
   avancement: number
   ordre: number
   created_at: string
+  // Horodatage réel du passage à "fait" (indépendant de date_fin, qui peut
+  // avoir été recalée manuellement) — alimente le calibrage de agent-suivi-planning.
+  completed_at: string | null
 }
 
 export interface TaskDependency {

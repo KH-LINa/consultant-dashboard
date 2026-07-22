@@ -129,6 +129,48 @@ Lors de la synthèse (après réception des résultats des sous-agents) :
 - Si un sous-agent a échoué, signale-le clairement au début de la réponse.`
 }
 
+// Seul agent-suivi-planning reçoit des données live de la base (projets
+// ouverts + calibrage historique) en plus de la demande — les autres
+// sous-agents sont de purs générateurs de texte, sans accès DB.
+const SLUG_SUIVI_PLANNING = 'agent-suivi-planning'
+
+interface CalibrageHistorique {
+  echantillon_taches_terminees: number
+  retard_moyen_jours?: number
+  retard_median_jours?: number
+  pct_taches_en_retard?: number
+}
+
+/** Écart en jours calendaires entre la fin prévue et la date réelle de complétion (positif = retard). */
+function ecartJours(dateFinISO: string, completedAtISO: string): number {
+  const fin = new Date(dateFinISO + 'T00:00:00')
+  const fait = new Date(completedAtISO)
+  return Math.round(
+    (Date.UTC(fait.getFullYear(), fait.getMonth(), fait.getDate()) -
+      Date.UTC(fin.getFullYear(), fin.getMonth(), fin.getDate())) /
+      86400000
+  )
+}
+
+/**
+ * Calibrage sur l'historique réel : c'est ce qui rend agent-suivi-planning
+ * plus précis à mesure que des tâches se terminent en base, sans aucun
+ * ré-entraînement de modèle — juste plus de données réelles à chaque appel.
+ */
+function calculerCalibrage(taches: { date_fin: string; completed_at: string }[]): CalibrageHistorique {
+  if (taches.length === 0) return { echantillon_taches_terminees: 0 }
+  const ecarts = taches.map((t) => ecartJours(t.date_fin, t.completed_at)).sort((a, b) => a - b)
+  const moyenne = ecarts.reduce((s, e) => s + e, 0) / ecarts.length
+  const mediane = ecarts[Math.floor(ecarts.length / 2)]
+  const pctEnRetard = Math.round((100 * ecarts.filter((e) => e > 0).length) / ecarts.length)
+  return {
+    echantillon_taches_terminees: ecarts.length,
+    retard_moyen_jours: Math.round(moyenne * 10) / 10,
+    retard_median_jours: mediane,
+    pct_taches_en_retard: pctEnRetard,
+  }
+}
+
 class SousAgentInconnuError extends Error {}
 
 async function executerSousAgent(
@@ -136,7 +178,8 @@ async function executerSousAgent(
   appel: AppelSousAgent,
   agentsParSlug: Map<string, AgentRow>,
   settings: ConsultantSettings,
-  demande: string
+  demande: string,
+  donnees?: string
 ): Promise<{ resultat: ResultatSousAgent; tokens_input: number; tokens_output: number }> {
   const agent = agentsParSlug.get(appel.slug)
   if (!agent) {
@@ -148,6 +191,7 @@ async function executerSousAgent(
   }
 
   try {
+    const blocDonnees = donnees ? `\n\n---\nDonnées du planning (extraites automatiquement de la base) :\n${donnees}` : ''
     const reponse = await anthropic.messages.create({
       model: agent.model,
       max_tokens: agent.max_tokens,
@@ -155,7 +199,7 @@ async function executerSousAgent(
       messages: [
         {
           role: 'user',
-          content: `${appel.instruction}\n\n---\nDemande initiale de l'utilisateur (contexte) :\n${demande}`,
+          content: `${appel.instruction}\n\n---\nDemande initiale de l'utilisateur (contexte) :\n${demande}${blocDonnees}`,
         },
       ],
     })
@@ -236,6 +280,84 @@ export async function orchestrer(demande: string): Promise<OrchestrationResultat
     return data?.id ?? null
   }
 
+  /** Voir SLUG_SUIVI_PLANNING : données live injectées uniquement pour ce sous-agent. */
+  async function donneesSuiviPlanning(): Promise<string> {
+    const { data: projets } = await supabase
+      .from('projects')
+      .select('id, titre, statut, date_debut, date_fin_prevue, contact:contacts(nom, entreprise)')
+      .in('statut', ['a_demarrer', 'en_cours', 'en_pause'])
+
+    const projetIds = (projets ?? []).map((p: { id: string }) => p.id)
+
+    const [{ data: phases }, { data: taches }, { data: dependances }, { data: tachesTerminees }] = await Promise.all([
+      projetIds.length
+        ? supabase.from('project_phases').select('project_id, titre, date_debut, date_fin').in('project_id', projetIds)
+        : Promise.resolve({ data: [] }),
+      projetIds.length
+        ? supabase.from('project_tasks').select('id, project_id, titre, date_debut, date_fin, statut, avancement').in('project_id', projetIds)
+        : Promise.resolve({ data: [] }),
+      projetIds.length
+        ? supabase.from('task_dependencies').select('predecessor_id, successor_id')
+        : Promise.resolve({ data: [] }),
+      supabase
+        .from('project_tasks')
+        .select('date_fin, completed_at')
+        .eq('statut', 'fait')
+        .not('date_fin', 'is', null)
+        .not('completed_at', 'is', null),
+    ])
+
+    type Tache = { id: string; project_id: string; titre: string; date_debut: string | null; date_fin: string | null; statut: string; avancement: number }
+    type Phase = { project_id: string; titre: string; date_debut: string | null; date_fin: string | null }
+    const toutesTaches = (taches ?? []) as Tache[]
+    const toutesPhases = (phases ?? []) as Phase[]
+
+    const tachesParProjet = new Map<string, Tache[]>()
+    for (const t of toutesTaches) {
+      const arr = tachesParProjet.get(t.project_id)
+      if (arr) arr.push(t); else tachesParProjet.set(t.project_id, [t])
+    }
+    const phasesParProjet = new Map<string, Phase[]>()
+    for (const p of toutesPhases) {
+      const arr = phasesParProjet.get(p.project_id)
+      if (arr) arr.push(p); else phasesParProjet.set(p.project_id, [p])
+    }
+    const titreParTache = new Map(toutesTaches.map((t) => [t.id, t.titre]))
+
+    const projetsOuverts = (projets ?? []).map((p: {
+      id: string; titre: string; statut: string; date_debut: string | null; date_fin_prevue: string | null
+      contact: { nom: string; entreprise: string | null }[] | { nom: string; entreprise: string | null } | null
+    }) => {
+      const tachesProjet = tachesParProjet.get(p.id) ?? []
+      const idsProjet = new Set(tachesProjet.map((t) => t.id))
+      const contact = Array.isArray(p.contact) ? p.contact[0] : p.contact
+      return {
+        titre: p.titre,
+        contact: contact ? [contact.nom, contact.entreprise].filter(Boolean).join(' — ') : null,
+        statut: p.statut,
+        date_debut: p.date_debut,
+        date_fin_prevue: p.date_fin_prevue,
+        phases: (phasesParProjet.get(p.id) ?? []).map((ph) => ({ titre: ph.titre, date_debut: ph.date_debut, date_fin: ph.date_fin })),
+        taches: tachesProjet.map((t) => ({ titre: t.titre, date_debut: t.date_debut, date_fin: t.date_fin, statut: t.statut, avancement: t.avancement })),
+        dependances: ((dependances ?? []) as { predecessor_id: string; successor_id: string }[])
+          .filter((d) => idsProjet.has(d.predecessor_id) && idsProjet.has(d.successor_id))
+          .map((d) => ({
+            predecesseur: titreParTache.get(d.predecessor_id) ?? '?',
+            successeur: titreParTache.get(d.successor_id) ?? '?',
+          })),
+      }
+    })
+
+    return JSON.stringify(
+      {
+        projets_ouverts: projetsOuverts,
+        calibrage_historique: calculerCalibrage((tachesTerminees ?? []) as { date_fin: string; completed_at: string }[]),
+      },
+      null,
+      2
+    )
+  }
+
   try {
     // ── Appel 1 : routage ────────────────────────────────────────────────
     const messagesRoutage: Anthropic.MessageParam[] = [{ role: 'user', content: demande }]
@@ -282,7 +404,10 @@ export async function orchestrer(demande: string): Promise<OrchestrationResultat
 
     // ── Exécution : sous-agents en parallèle ─────────────────────────────
     const executions = await Promise.all(
-      appels.map((appel) => executerSousAgent(anthropic, appel, agentsParSlug, settings, demande))
+      appels.map(async (appel) => {
+        const donnees = appel.slug === SLUG_SUIVI_PLANNING ? await donneesSuiviPlanning() : undefined
+        return executerSousAgent(anthropic, appel, agentsParSlug, settings, demande, donnees)
+      })
     )
     const resultats = executions.map((e) => e.resultat)
     for (const e of executions) {
