@@ -58,6 +58,15 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs }: Tasks
     if (error) toast.error(error.message); else router.refresh()
   }
 
+  // Marquer une tâche "Fait" doit aussi mettre son avancement à 100 % —
+  // sinon le statut et le pourcentage restent incohérents (ex. "Fait" à 0 %).
+  async function updateStatut(id: string, statut: ProjectTaskStatus, avancementActuel: number) {
+    const payload: { statut: ProjectTaskStatus; avancement?: number } = { statut }
+    if (statut === 'fait' && avancementActuel !== 100) payload.avancement = 100
+    const { error } = await supabase.from('project_tasks').update(payload).eq('id', id)
+    if (error) toast.error(error.message); else router.refresh()
+  }
+
   async function remove(id: string) {
     const { error } = await supabase.from('project_tasks').delete().eq('id', id)
     if (error) toast.error(error.message); else { toast.success('Tâche supprimée'); router.refresh() }
@@ -119,7 +128,8 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs }: Tasks
                   onChange={(e) => update(t.id, 'date_fin', e.target.value || null)} />
                 {/* Statut */}
                 <div className="col-span-2">
-                  <Select value={t.statut} onValueChange={(v) => update(t.id, 'statut', v)}>
+                  <Select value={t.statut}
+                    onValueChange={(v) => updateStatut(t.id, v as ProjectTaskStatus, t.avancement)}>
                     <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {(Object.keys(statutLabel) as ProjectTaskStatus[]).map((s) => (
@@ -139,6 +149,7 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs }: Tasks
                 <div className="flex items-center gap-2 ml-auto">
                   <span className="text-xs text-gray-400">Avancement</span>
                   <Input type="number" min="0" max="100" className="h-8 w-16 text-xs text-right"
+                    key={`av-${t.id}-${t.avancement}`}
                     defaultValue={t.avancement}
                     onBlur={(e) => {
                       const v = Math.max(0, Math.min(100, parseInt(e.target.value) || 0))
