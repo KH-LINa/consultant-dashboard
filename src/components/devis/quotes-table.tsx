@@ -147,6 +147,7 @@ export function QuotesTable({ quotes }: { quotes: (Quote & { contact?: { nom: st
                           quoteId={quote.id}
                           contactId={quote.contact_id}
                           titre={quote.titre}
+                          lignes={quote.lignes}
                         />
                         <Button
                           variant="ghost"
