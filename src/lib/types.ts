@@ -93,6 +93,9 @@ export interface ProjectTask {
   avancement: number
   ordre: number
   created_at: string
+  // Horodatage réel du passage à "fait" (indépendant de date_fin, qui peut
+  // avoir été recalée manuellement) — alimente le calibrage de agent-suivi-planning.
+  completed_at: string | null
 }
 
 export interface TaskDependency {
@@ -182,6 +185,42 @@ export interface Quote {
   response_at?: string | null
   response_comment?: string | null
   contact?: Contact
+}
+
+// ── Module Agents (orchestrateur + sous-agents) ──────────────────────────
+
+export interface AgentConfig {
+  id: string
+  slug: string
+  nom: string
+  description: string | null
+  system_prompt: string
+  model: string
+  max_tokens: number
+  actif: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface AgentRunAppel {
+  slug: string
+  nom?: string
+  instruction?: string
+  statut: 'succes' | 'erreur'
+  erreur?: string
+}
+
+export interface AgentRun {
+  id: string
+  demande: string
+  agents_appeles: AgentRunAppel[]
+  resultat: string | null
+  tokens_input: number
+  tokens_output: number
+  duree_ms: number
+  statut: 'succes' | 'erreur'
+  erreur: string | null
+  created_at: string
 }
 
 export type ContractStatus = 'brouillon' | 'envoye' | 'signe' | 'archive'

@@ -21,6 +21,7 @@ export default function UpdatePasswordPage() {
     // Créé ici (et non au rendu du composant) : cet appel exige les variables
     // NEXT_PUBLIC_SUPABASE_*, absentes lors du prérendu statique de build sans
     // env vars — le créer au rendu ferait échouer le build (ex. previews Vercel).
+    // useEffect ne s'exécute jamais côté serveur/prérendu, donc sans risque ici.
     const supabase = createClient()
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
