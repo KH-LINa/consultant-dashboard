@@ -299,9 +299,45 @@ export function ProjectGantt({
     else router.refresh()
   }, [router])
 
+  // « + » par ligne : ajoute une tâche rattachée à la phase de la ligne
+  // cliquée (ou à la même phase qu'une tâche cliquée), chaînée après la
+  // dernière tâche existante de cette phase — pas de nouvelle notion en
+  // base, juste un raccourci pour ne pas quitter le Gantt.
+  const handleAjouterTache = useCallback(async (ganttId: string) => {
+    const m = ganttId.match(/^(phase|task)_(.+)$/)
+    if (!m) return
+    const [, kind, id] = m
+    const phaseId = kind === 'phase' ? id : (taskById.get(id)?.phase_id ?? null)
+
+    let debut: string
+    if (phaseId) {
+      const tachesPhase = localTasks.filter((t) => t.phase_id === phaseId && t.date_fin)
+      const dernierFin = tachesPhase.length > 0
+        ? tachesPhase.reduce((max, t) => (t.date_fin! > max ? t.date_fin! : max), tachesPhase[0].date_fin!)
+        : null
+      const phase = localPhases.find((p) => p.id === phaseId)
+      debut = dernierFin ? addDays(dernierFin, 1) : (phase?.date_debut ?? toLocalISO(new Date()))
+    } else {
+      debut = toLocalISO(new Date())
+    }
+    const fin = addDays(debut, 1)
+
+    const supabase = createClient()
+    const { error } = await supabase.from('project_tasks').insert({
+      project_id: projectId,
+      titre: 'Nouvelle tâche',
+      phase_id: phaseId,
+      date_debut: debut,
+      date_fin: fin,
+      ordre: localTasks.length,
+    })
+    if (error) toast.error(`Échec de l'ajout : ${error.message}`)
+    else router.refresh()
+  }, [taskById, localTasks, localPhases, projectId, router])
+
   const { Header: TaskListHeader, Table: TaskListTable } = useMemo(
-    () => createTaskListComponents(colWidths, startResize, titreReel, handleRename),
-    [colWidths, startResize, titreReel, handleRename]
+    () => createTaskListComponents(colWidths, startResize, titreReel, handleRename, handleAjouterTache),
+    [colWidths, startResize, titreReel, handleRename, handleAjouterTache]
   )
 
   const TooltipContent = useMemo(() => {

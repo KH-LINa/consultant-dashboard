@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Task } from 'gantt-task-react'
+import { Plus } from 'lucide-react'
 
 export interface ColWidths { name: number; from: number; to: number }
 
@@ -93,12 +94,15 @@ function fmtDate(d: Date): string {
  * titreReel/onRename : t.name porte le libellé DÉCORÉ affiché dans le Gantt
  * ([initiales] responsable, ⚠ conflit…) — titreReel restitue le titre réel
  * (phase/tâche/jalon) à éditer, onRename persiste le renommage en base.
+ * onAddTask : ajoute une tâche rattachée à la phase de la ligne cliquée
+ * (ou à la même phase qu'une tâche cliquée) — pas de bouton sur les jalons.
  */
 export function createTaskListComponents(
   widths: ColWidths,
   startResize: (col: keyof ColWidths, e: React.MouseEvent) => void,
   titreReel: (ganttId: string) => string,
-  onRename: (ganttId: string, nouveauTitre: string) => void
+  onRename: (ganttId: string, nouveauTitre: string) => void,
+  onAddTask: (ganttId: string) => void
 ) {
   const Header: React.FC<{ headerHeight: number; fontFamily: string; fontSize: string }> =
     ({ headerHeight, fontFamily, fontSize }) => (
@@ -122,7 +126,7 @@ export function createTaskListComponents(
   }> = ({ rowHeight, fontFamily, fontSize, tasks, onExpanderClick }) => (
     <div style={{ fontFamily, fontSize }}>
       {tasks.map((t) => (
-        <div key={t.id} style={{ height: rowHeight }} className="flex items-center border-b border-gray-50">
+        <div key={t.id} style={{ height: rowHeight }} className="group flex items-center border-b border-gray-50">
           <div style={{ width: widths.name, minWidth: widths.name }} className="flex items-center gap-1 px-3 overflow-hidden">
             {t.type === 'project' ? (
               <button
@@ -148,6 +152,15 @@ export function createTaskListComponents(
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
               className={`w-full truncate bg-transparent border-0 outline-none rounded px-0.5 -mx-0.5 focus:ring-1 focus:ring-[#534AB7] ${t.type === 'project' ? 'font-semibold text-gray-800' : 'text-gray-700'}`}
             />
+            {t.type !== 'milestone' && (
+              <button
+                onClick={() => onAddTask(t.id)}
+                title={t.type === 'project' ? 'Ajouter une tâche à cette phase' : 'Ajouter une tâche à côté'}
+                className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-[#534AB7] opacity-0 group-hover:opacity-100"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            )}
           </div>
           <div style={{ width: widths.from, minWidth: widths.from }} className="px-3 truncate text-gray-500">
             {fmtDate(t.start)}
