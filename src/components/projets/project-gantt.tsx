@@ -153,6 +153,9 @@ export function ProjectGantt({
   const [newFin, setNewFin] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() + 4); return toLocalISO(d)
   })
+  // Récurrence de l'ajout rapide : 'none' | 'weekly' | 'monthly', × N occurrences
+  const [newRecurrence, setNewRecurrence] = useState<'none' | 'weekly' | 'monthly'>('none')
+  const [newOccurrences, setNewOccurrences] = useState('4')
   const [adding, setAdding] = useState(false)
 
   // États locaux (optimistic update)
@@ -467,6 +470,41 @@ export function ProjectGantt({
     else router.refresh()
   }, [taskById, localTasks, localPhases, projectId, router, feries])
 
+  // Fractionner une tâche-feuille : la lib gantt-task-react ne sait pas dessiner
+  // une barre à trou, on modélise donc le fractionnement par 2 sous-tâches
+  // (segments de travail) sous une barre récapitulative qui couvre toute la
+  // période — la pause apparaît comme l'espace vide entre les deux segments.
+  const handleFractionner = useCallback(async (ganttId: string) => {
+    const id = ganttId.replace('task_', '')
+    const t = taskById.get(id)
+    if (!t?.date_debut || !t.date_fin) { toast.error('La tâche doit avoir des dates pour être fractionnée'); return }
+    if (localTasks.some((c) => c.parent_task_id === id)) {
+      toast.info('Cette tâche a déjà des segments (ou sous-tâches).'); return
+    }
+    const dureeOuvree = Math.max(2, joursOuvresEntre(t.date_debut, t.date_fin, feries))
+    const moitie = Math.ceil(dureeOuvree / 2)
+    // Segment 1 : première moitié, à partir du début actuel
+    const seg1Debut = prochainJourOuvre(t.date_debut, feries)
+    const seg1Fin = addJoursOuvres(seg1Debut, moitie - 1, feries)
+    // Segment 2 : après une pause d'un jour ouvré, le reste de la durée
+    const seg2Debut = addJoursOuvres(seg1Fin, 2, feries)
+    const seg2Fin = addJoursOuvres(seg2Debut, (dureeOuvree - moitie) - 1, feries)
+
+    const supabase = createClient()
+    const { error: errSeg } = await supabase.from('project_tasks').insert([
+      { project_id: projectId, parent_task_id: id, phase_id: t.phase_id, titre: 'Segment 1',
+        date_debut: seg1Debut, date_fin: seg1Fin, ordre: 0 },
+      { project_id: projectId, parent_task_id: id, phase_id: t.phase_id, titre: 'Segment 2',
+        date_debut: seg2Debut, date_fin: seg2Fin, ordre: 1 },
+    ])
+    if (errSeg) { toast.error(`Échec du fractionnement : ${errSeg.message}`); return }
+    // Étend la tâche parente pour couvrir la pause + le 2e segment
+    const res = await updateTaskDates(id, seg1Debut, seg2Fin, projectId)
+    if (!res.ok) toast.error('Segments créés, mais l\'enveloppe parente n\'a pas pu être étendue.')
+    else toast.success('Tâche fractionnée en deux segments')
+    router.refresh()
+  }, [taskById, localTasks, projectId, router, feries])
+
   const wbsDe = useCallback((ganttId: string) => wbsById.get(ganttId) ?? '', [wbsById])
 
   // Largeur de colonne du Gantt (partagée entre la prop columnWidth et le
@@ -498,8 +536,8 @@ export function ProjectGantt({
   }, [viewMode, ganttTasks, columnWidth, feries])
 
   const { Header: TaskListHeader, Table: TaskListTable } = useMemo(
-    () => createTaskListComponents(colWidths, startResize, titreReel, handleRename, handleAjouterTache, wbsDe, feries),
-    [colWidths, startResize, titreReel, handleRename, handleAjouterTache, wbsDe, feries]
+    () => createTaskListComponents(colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, wbsDe, feries),
+    [colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, wbsDe, feries]
   )
 
   const TooltipContent = useMemo(() => {
@@ -681,19 +719,38 @@ export function ProjectGantt({
     if (newFin < newDebut) { toast.error('La date de fin doit être après le début'); return }
     setAdding(true)
     const supabase = createClient()
-    const { error } = await supabase.from('project_tasks').insert({
-      project_id: projectId,
-      titre: newTitre.trim(),
-      phase_id: newPhase === NONE ? null : newPhase,
-      date_debut: newDebut,
-      date_fin: newFin,
-      ordre: localTasks.length,
-    })
+
+    // Récurrence : on matérialise N occurrences comme de vraies tâches datées
+    // (chaque semaine ou chaque mois), recalées sur des jours ouvrés — chacune
+    // se comporte ensuite comme une tâche normale (drag, dépendances, coût…).
+    const n = newRecurrence === 'none' ? 1 : Math.max(1, Math.min(52, parseInt(newOccurrences) || 1))
+    const dureeCalendaire = diffDays(newDebut, newFin)
+    const lignes = []
+    for (let i = 0; i < n; i++) {
+      // Décalage de l'occurrence : i semaines ou i mois après la première
+      let debut = newDebut
+      if (newRecurrence === 'weekly') debut = addDays(newDebut, 7 * i)
+      else if (newRecurrence === 'monthly') {
+        const d = new Date(newDebut + 'T00:00:00'); d.setMonth(d.getMonth() + i); debut = toLocalISO(d)
+      }
+      debut = prochainJourOuvre(debut, feries)
+      const fin = precedentJourOuvre(addDays(debut, dureeCalendaire), feries)
+      lignes.push({
+        project_id: projectId,
+        titre: n > 1 ? `${newTitre.trim()} (${i + 1}/${n})` : newTitre.trim(),
+        phase_id: newPhase === NONE ? null : newPhase,
+        date_debut: debut,
+        date_fin: fin < debut ? debut : fin,
+        ordre: localTasks.length + i,
+      })
+    }
+
+    const { error } = await supabase.from('project_tasks').insert(lignes)
     setAdding(false)
     if (error) {
       toast.error(error.message)
     } else {
-      toast.success('Tâche ajoutée au planning')
+      toast.success(n > 1 ? `${n} occurrences ajoutées au planning` : 'Tâche ajoutée au planning')
       setNewTitre('')
       router.refresh()
     }
@@ -1013,6 +1070,28 @@ export function ProjectGantt({
             <label className="text-xs text-gray-500">Fin</label>
             <Input type="date" value={newFin} onChange={(e) => setNewFin(e.target.value)} className="h-9 text-xs" />
           </div>
+          <div className="w-36">
+            <label className="text-xs text-gray-500">Répéter</label>
+            <Select value={newRecurrence} onValueChange={(v) => setNewRecurrence((v as 'none' | 'weekly' | 'monthly') ?? 'none')}>
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue>
+                  {(v: string) => v === 'weekly' ? 'Chaque semaine' : v === 'monthly' ? 'Chaque mois' : 'Non'}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Non</SelectItem>
+                <SelectItem value="weekly">Chaque semaine</SelectItem>
+                <SelectItem value="monthly">Chaque mois</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {newRecurrence !== 'none' && (
+            <div className="w-20">
+              <label className="text-xs text-gray-500" title="Nombre d'occurrences">× fois</label>
+              <Input type="number" min="1" max="52" value={newOccurrences}
+                onChange={(e) => setNewOccurrences(e.target.value)} className="h-9 text-xs" />
+            </div>
+          )}
           <Button type="submit" size="sm" disabled={adding || !newTitre.trim()} className="h-9">
             <Plus className="h-4 w-4 mr-1" />
             Ajouter

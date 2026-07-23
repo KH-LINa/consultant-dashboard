@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Task } from 'gantt-task-react'
-import { Plus } from 'lucide-react'
+import { Plus, Scissors } from 'lucide-react'
 import { joursOuvresEntre } from '@/lib/jours-ouvres'
 import { toLocalISO } from '@/lib/gantt-deps'
 
@@ -107,6 +107,7 @@ function fmtDuree(t: Task, feries: Set<string>): string {
  * (phase/tâche/jalon) à éditer, onRename persiste le renommage en base.
  * onAddTask : ajoute une tâche rattachée à la phase de la ligne cliquée
  * (ou à la même phase qu'une tâche cliquée) — pas de bouton sur les jalons.
+ * onSplit : fractionne une tâche-feuille en deux segments de travail (ciseaux).
  * wbs : numéro hiérarchique de la ligne (1, 1.1, 1.1.1…), vide si non numérotée.
  */
 export function createTaskListComponents(
@@ -115,6 +116,7 @@ export function createTaskListComponents(
   titreReel: (ganttId: string) => string,
   onRename: (ganttId: string, nouveauTitre: string) => void,
   onAddTask: (ganttId: string) => void,
+  onSplit: (ganttId: string) => void,
   wbs: (ganttId: string) => string,
   feries: Set<string>
 ) {
@@ -179,6 +181,19 @@ export function createTaskListComponents(
               }}
               className={`flex-1 min-w-0 truncate bg-transparent border border-transparent outline-none rounded px-1 -mx-1 cursor-text hover:border-gray-300 focus:border-[#534AB7] focus:ring-1 focus:ring-[#534AB7] focus:bg-white ${t.type === 'project' ? 'font-semibold text-gray-800' : 'text-gray-700'}`}
             />
+            {/* Fractionner : seulement sur une tâche-feuille (type 'task', pas
+                une phase, un jalon, un conteneur de sous-tâches ni le récap) */}
+            {t.type === 'task' && t.id.startsWith('task_') && (
+              <button
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                onClick={() => onSplit(t.id)}
+                title="Fractionner en deux segments (pause au milieu)"
+                className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-amber-500 opacity-0 group-hover:opacity-100"
+              >
+                <Scissors className="h-3 w-3" />
+              </button>
+            )}
             {t.type !== 'milestone' && t.id !== 'projet_global' && (
               <button
                 onMouseDown={(e) => e.stopPropagation()}
