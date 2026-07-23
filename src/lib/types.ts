@@ -121,10 +121,17 @@ export interface ResourceAssignment {
   task?: Pick<ProjectTask, 'id' | 'titre'>
 }
 
+// Types de liens MS Project : FS = fin→début (défaut), SS = début→début,
+// FF = fin→fin, SF = début→fin. En français : FD / DD / FF / DF.
+export type DependencyType = 'FS' | 'SS' | 'FF' | 'SF'
+
 export interface TaskDependency {
   id: string
   predecessor_id: string
   successor_id: string
+  type: DependencyType
+  // Délai (positif) ou avance (négatif) en jours ouvrés appliqué à la contrainte
+  lag_days: number
   created_at: string
 }
 

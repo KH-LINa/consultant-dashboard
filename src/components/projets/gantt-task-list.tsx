@@ -11,6 +11,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Task } from 'gantt-task-react'
 import { Plus } from 'lucide-react'
+import { joursOuvresEntre } from '@/lib/jours-ouvres'
+import { toLocalISO } from '@/lib/gantt-deps'
 
 export interface ColWidths { name: number; dur: number; from: number; to: number }
 
@@ -89,10 +91,10 @@ function fmtDate(d: Date): string {
   return d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-/** Durée en jours pleins (début et fin inclus) — "—" pour un jalon (ponctuel). */
-function fmtDuree(t: Task): string {
+/** Durée en jours OUVRÉS (début et fin inclus, week-ends et fériés exclus) — "—" pour un jalon. */
+function fmtDuree(t: Task, feries: Set<string>): string {
   if (t.type === 'milestone') return '—'
-  const jours = Math.round((t.end.getTime() - t.start.getTime()) / 86400000) + 1
+  const jours = joursOuvresEntre(toLocalISO(t.start), toLocalISO(t.end), feries)
   return `${jours} j`
 }
 
@@ -113,7 +115,8 @@ export function createTaskListComponents(
   titreReel: (ganttId: string) => string,
   onRename: (ganttId: string, nouveauTitre: string) => void,
   onAddTask: (ganttId: string) => void,
-  wbs: (ganttId: string) => string
+  wbs: (ganttId: string) => string,
+  feries: Set<string>
 ) {
   const Header: React.FC<{ headerHeight: number; fontFamily: string; fontSize: string }> =
     ({ headerHeight, fontFamily, fontSize }) => (
@@ -188,8 +191,9 @@ export function createTaskListComponents(
               </button>
             )}
           </div>
-          <div style={{ width: widths.dur, minWidth: widths.dur }} className="px-3 truncate text-gray-500 tabular-nums">
-            {fmtDuree(t)}
+          <div style={{ width: widths.dur, minWidth: widths.dur }} title="Jours ouvrés (week-ends et fériés exclus)"
+            className="px-3 truncate text-gray-500 tabular-nums">
+            {fmtDuree(t, feries)}
           </div>
           <div style={{ width: widths.from, minWidth: widths.from }} className="px-3 truncate text-gray-500">
             {fmtDate(t.start)}

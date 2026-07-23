@@ -1,10 +1,14 @@
-import type { ProjectTask, TaskDependency } from '@/lib/types'
+import type { ProjectTask, TaskDependency, DependencyType } from '@/lib/types'
+import { addJoursOuvres, joursOuvresEntre } from '@/lib/jours-ouvres'
 
 /**
  * Utilitaires de vérification des dépendances entre tâches (Gantt).
  * Fonctions pures, sans accès réseau — utilisées par le Gantt et le
  * gestionnaire de dépendances pour valider avant insertion et signaler
  * les incohérences de planning.
+ *
+ * Les dépendances portent un type MS Project (FS/SS/FF/SF) et un délai
+ * (lag) en jours ouvrés — voir contrainteDep() pour la sémantique exacte.
  */
 
 /**
@@ -67,28 +71,62 @@ function diffDays(a: string, b: string): number {
 }
 
 /**
- * Conflits de planning : la tâche successeur commence avant la fin de son
- * prérequis (chevauchement réel ; démarrer le jour de fin du prérequis est toléré).
+ * Contrainte imposée par une dépendance, en fonction de son type :
+ * - FS (fin→début, défaut) : le successeur ne démarre pas avant la fin du
+ *   prérequis + lag (lag 0 = démarrer le jour même de la fin est toléré,
+ *   comportement historique du module).
+ * - SS (début→début) : le successeur ne démarre pas avant le début du
+ *   prérequis + lag.
+ * - FF (fin→fin) : le successeur ne finit pas avant la fin du prérequis + lag.
+ * - SF (début→fin) : le successeur ne finit pas avant le début du prérequis + lag.
+ * Le lag est compté en jours ouvrés (fériés France + week-ends exclus).
+ */
+function contrainteDep(
+  type: DependencyType,
+  pred: ProjectTask,
+  feries: Set<string>,
+  lag: number
+): { champ: 'debut' | 'fin'; min: string } | null {
+  if (!pred.date_debut || !pred.date_fin) return null
+  switch (type) {
+    case 'FS': return { champ: 'debut', min: addJoursOuvres(pred.date_fin, lag, feries) }
+    case 'SS': return { champ: 'debut', min: addJoursOuvres(pred.date_debut, lag, feries) }
+    case 'FF': return { champ: 'fin', min: addJoursOuvres(pred.date_fin, lag, feries) }
+    case 'SF': return { champ: 'fin', min: addJoursOuvres(pred.date_debut, lag, feries) }
+  }
+}
+
+/**
+ * Conflits de planning : la contrainte de la dépendance (selon son type et
+ * son lag) n'est pas respectée par le successeur. Le recalage proposé
+ * conserve la durée OUVRÉE de la tâche successeur.
  * Ne considère que les dépendances dont les deux tâches ont des dates.
  */
 export function findDependencyConflicts(
   tasks: ProjectTask[],
-  deps: TaskDependency[]
+  deps: TaskDependency[],
+  feries: Set<string>
 ): DependencyConflict[] {
   const byId = new Map(tasks.map((t) => [t.id, t]))
   const out: DependencyConflict[] = []
   for (const dep of deps) {
     const pred = byId.get(dep.predecessor_id)
     const succ = byId.get(dep.successor_id)
-    if (!pred?.date_fin || !succ?.date_debut || !succ.date_fin) continue
-    if (succ.date_debut < pred.date_fin) {
-      const duree = Math.max(0, diffDays(succ.date_debut, succ.date_fin))
+    if (!pred?.date_fin || !pred.date_debut || !succ?.date_debut || !succ.date_fin) continue
+    const c = contrainteDep(dep.type ?? 'FS', pred, feries, dep.lag_days ?? 0)
+    if (!c) continue
+    const valeur = c.champ === 'debut' ? succ.date_debut : succ.date_fin
+    if (valeur < c.min) {
+      const dureeOuvree = Math.max(1, joursOuvresEntre(succ.date_debut, succ.date_fin, feries))
+      const suggestedStart = c.champ === 'debut'
+        ? c.min
+        : addJoursOuvres(c.min, -(dureeOuvree - 1), feries)
       out.push({
         dep,
         predecessor: pred,
         successor: succ,
-        suggestedStart: pred.date_fin,
-        suggestedEnd: addDays(pred.date_fin, duree),
+        suggestedStart,
+        suggestedEnd: addJoursOuvres(suggestedStart, dureeOuvree - 1, feries),
       })
     }
   }
@@ -132,16 +170,20 @@ export function computeCpm(tasks: ProjectTask[], deps: TaskDependency[]): CpmRes
     dated.map((t) => [t.id, Math.max(1, diffDays(t.date_debut!, t.date_fin!) + 1)])
   )
 
-  // Graphe restreint aux tâches datées
-  const succs = new Map<string, string[]>()
-  const preds = new Map<string, string[]>()
+  // Graphe restreint aux tâches datées — on conserve la dépendance complète
+  // (type + lag) sur chaque arête pour appliquer la bonne contrainte CPM.
+  type Arete = { autre: string; type: DependencyType; lag: number }
+  const succs = new Map<string, Arete[]>()
+  const preds = new Map<string, Arete[]>()
   const indeg = new Map<string, number>(dated.map((t) => [t.id, 0]))
   for (const d of deps) {
     if (!ids.has(d.predecessor_id) || !ids.has(d.successor_id)) continue
+    const type = d.type ?? 'FS'
+    const lag = d.lag_days ?? 0
     if (!succs.has(d.predecessor_id)) succs.set(d.predecessor_id, [])
-    succs.get(d.predecessor_id)!.push(d.successor_id)
+    succs.get(d.predecessor_id)!.push({ autre: d.successor_id, type, lag })
     if (!preds.has(d.successor_id)) preds.set(d.successor_id, [])
-    preds.get(d.successor_id)!.push(d.predecessor_id)
+    preds.get(d.successor_id)!.push({ autre: d.predecessor_id, type, lag })
     indeg.set(d.successor_id, (indeg.get(d.successor_id) ?? 0) + 1)
   }
 
@@ -153,30 +195,58 @@ export function computeCpm(tasks: ProjectTask[], deps: TaskDependency[]): CpmRes
     const id = queue.shift()!
     order.push(id)
     for (const s of succs.get(id) ?? []) {
-      const v = (indegWork.get(s) ?? 0) - 1
-      indegWork.set(s, v)
-      if (v === 0) queue.push(s)
+      const v = (indegWork.get(s.autre) ?? 0) - 1
+      indegWork.set(s.autre, v)
+      if (v === 0) queue.push(s.autre)
     }
   }
 
-  // Passe avant : ES / EF
+  // Passe avant : ES / EF. Contrainte selon le type du lien (prédécesseur p,
+  // successeur courant) : FS → ES ≥ EF_p + lag ; SS → ES ≥ ES_p + lag ;
+  // FF → EF ≥ EF_p + lag ; SF → EF ≥ ES_p + lag.
   const es = new Map<string, number>()
   const ef = new Map<string, number>()
   for (const id of order) {
-    const start = Math.max(0, ...(preds.get(id) ?? []).map((p) => ef.get(p) ?? 0))
+    const duree = dur.get(id)!
+    let start = 0
+    for (const a of preds.get(id) ?? []) {
+      const esP = es.get(a.autre) ?? 0
+      const efP = ef.get(a.autre) ?? 0
+      let minStart: number
+      switch (a.type) {
+        case 'FS': minStart = efP + a.lag; break
+        case 'SS': minStart = esP + a.lag; break
+        case 'FF': minStart = efP + a.lag - duree; break
+        case 'SF': minStart = esP + a.lag - duree; break
+      }
+      if (minStart > start) start = minStart
+    }
     es.set(id, start)
-    ef.set(id, start + dur.get(id)!)
+    ef.set(id, start + duree)
   }
   const projectLength = Math.max(0, ...order.map((id) => ef.get(id)!))
 
-  // Passe arrière : LS / LF
+  // Passe arrière : LS / LF (contraintes symétriques de la passe avant)
   const ls = new Map<string, number>()
   const lf = new Map<string, number>()
   for (let i = order.length - 1; i >= 0; i--) {
     const id = order[i]
-    const end = Math.min(projectLength, ...(succs.get(id) ?? []).map((s) => ls.get(s) ?? projectLength))
+    const duree = dur.get(id)!
+    let end = projectLength
+    for (const a of succs.get(id) ?? []) {
+      const lsS = ls.get(a.autre) ?? projectLength
+      const lfS = lf.get(a.autre) ?? projectLength
+      let maxEnd: number
+      switch (a.type) {
+        case 'FS': maxEnd = lsS - a.lag; break
+        case 'SS': maxEnd = lsS - a.lag + duree; break
+        case 'FF': maxEnd = lfS - a.lag; break
+        case 'SF': maxEnd = lfS - a.lag + duree; break
+      }
+      if (maxEnd < end) end = maxEnd
+    }
     lf.set(id, end)
-    ls.set(id, end - dur.get(id)!)
+    ls.set(id, end - duree)
   }
 
   // Marges + profondeur topologique (colonnes d'un diagramme PERT)
@@ -184,7 +254,7 @@ export function computeCpm(tasks: ProjectTask[], deps: TaskDependency[]): CpmRes
   const depth = new Map<string, number>()
   for (const id of order) {
     slack.set(id, (ls.get(id) ?? 0) - (es.get(id) ?? 0))
-    depth.set(id, Math.max(-1, ...(preds.get(id) ?? []).map((p) => depth.get(p) ?? -1)) + 1)
+    depth.set(id, Math.max(-1, ...(preds.get(id) ?? []).map((p) => depth.get(p.autre) ?? -1)) + 1)
   }
 
   return { order, es, ef, ls, lf, slack, dur, projectLength, depth }

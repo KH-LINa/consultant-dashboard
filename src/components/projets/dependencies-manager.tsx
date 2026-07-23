@@ -3,13 +3,15 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { ProjectTask, TaskDependency } from '@/lib/types'
+import type { ProjectTask, TaskDependency, DependencyType } from '@/lib/types'
 import {
   wouldCreateCycle, findDependencyConflicts, findUntrackedDependencies,
 } from '@/lib/gantt-deps'
+import { feriesCourants } from '@/lib/jours-ouvres'
 import { updateTaskDates } from '@/app/actions/gantt'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -29,6 +31,15 @@ function fmtDate(iso: string | null): string {
 
 const NONE_TASK = '__none__'
 
+// Libellés français des types MS Project (FD/DD/FF/DF)
+const TYPE_LABEL: Record<DependencyType, string> = {
+  FS: 'Fin → Début (FD)',
+  SS: 'Début → Début (DD)',
+  FF: 'Fin → Fin (FF)',
+  SF: 'Début → Fin (DF)',
+}
+const TYPE_COURT: Record<DependencyType, string> = { FS: 'FD', SS: 'DD', FF: 'FF', SF: 'DF' }
+
 export function DependenciesManager({ projectId, tasks, dependencies }: DependenciesManagerProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -38,12 +49,15 @@ export function DependenciesManager({ projectId, tasks, dependencies }: Dependen
   // une seule dépendance pouvait alors être créée par chargement de page.
   const [pred, setPred] = useState(NONE_TASK)
   const [succ, setSucc] = useState(NONE_TASK)
+  const [type, setType] = useState<DependencyType>('FS')
+  const [lag, setLag] = useState('')
   const [recalage, setRecalage] = useState<string | null>(null) // dep.id en cours de recalage
 
   const titreById = Object.fromEntries(tasks.map((t) => [t.id, t.titre]))
 
   // Vérifications de cohérence (recalculées à chaque rendu — données légères)
-  const conflicts = useMemo(() => findDependencyConflicts(tasks, dependencies), [tasks, dependencies])
+  const feries = useMemo(() => feriesCourants(), [])
+  const conflicts = useMemo(() => findDependencyConflicts(tasks, dependencies, feries), [tasks, dependencies, feries])
   const conflictByDepId = useMemo(() => new Map(conflicts.map((c) => [c.dep.id, c])), [conflicts])
   const untracked = useMemo(
     () => new Set(findUntrackedDependencies(tasks, dependencies).map((d) => d.id)),
@@ -61,13 +75,13 @@ export function DependenciesManager({ projectId, tasks, dependencies }: Dependen
       return
     }
     const { error } = await supabase.from('task_dependencies').insert({
-      predecessor_id: pred, successor_id: succ,
+      predecessor_id: pred, successor_id: succ, type, lag_days: parseInt(lag) || 0,
     })
     if (error) {
       toast.error(error.message.includes('duplicate') ? 'Cette dépendance existe déjà' : error.message)
     } else {
       toast.success('Dépendance ajoutée')
-      setPred(NONE_TASK); setSucc(NONE_TASK)
+      setPred(NONE_TASK); setSucc(NONE_TASK); setType('FS'); setLag('')
       router.refresh()
     }
   }
@@ -123,6 +137,11 @@ export function DependenciesManager({ projectId, tasks, dependencies }: Dependen
                     <span className="font-medium">{titreById[d.predecessor_id] ?? '?'}</span>
                     <ArrowRight className="h-3.5 w-3.5 text-gray-400" />
                     <span className="font-medium">{titreById[d.successor_id] ?? '?'}</span>
+                    <span className="text-[10px] font-medium text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded"
+                      title={TYPE_LABEL[d.type ?? 'FS']}>
+                      {TYPE_COURT[d.type ?? 'FS']}
+                      {(d.lag_days ?? 0) !== 0 && ` ${d.lag_days > 0 ? '+' : ''}${d.lag_days} j`}
+                    </span>
                     {sansDates && (
                       <span className="flex items-center gap-1 text-xs text-gray-400" title="Une des deux tâches n'a pas de dates : la flèche n'apparaît pas dans le Gantt">
                         <CalendarOff className="h-3 w-3" />
@@ -183,11 +202,30 @@ export function DependenciesManager({ projectId, tasks, dependencies }: Dependen
               </SelectContent>
             </Select>
           </div>
+          <div className="w-44">
+            <label className="text-xs text-gray-500">Type de lien</label>
+            <Select value={type} onValueChange={(v) => setType((v as DependencyType) ?? 'FS')}>
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue>{(v: string) => TYPE_LABEL[v as DependencyType] ?? 'Type'}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(TYPE_LABEL) as DependencyType[]).map((t) => (
+                  <SelectItem key={t} value={t}>{TYPE_LABEL[t]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-24">
+            <label className="text-xs text-gray-500" title="Délai (positif) ou avance (négatif) en jours ouvrés">Délai (j)</label>
+            <Input type="number" step="1" className="h-9 text-xs" value={lag}
+              onChange={(e) => setLag(e.target.value)} placeholder="0" />
+          </div>
           <Button size="sm" onClick={addDependency} className="h-9">Lier</Button>
         </div>
         <p className="text-xs text-gray-400">
-          La tâche « prérequise » doit se terminer avant que la suivante commence (flèche dans le Gantt).
-          Les boucles (A → B → A) sont refusées automatiquement.
+          Types de lien façon MS Project : FD (la suivante démarre après la fin du prérequis, défaut),
+          DD (démarrages liés), FF (fins liées), DF (fin liée au démarrage). Délai en jours ouvrés,
+          négatif pour une avance (chevauchement). Les boucles (A → B → A) sont refusées automatiquement.
         </p>
       </CardContent>
     </Card>

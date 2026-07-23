@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/select'
 import {
   GanttChartSquare, AlertTriangle, Plus, Route, Network,
-  Maximize2, Minimize2, Printer, ZoomIn, ZoomOut,
+  Maximize2, Minimize2, Printer, ZoomIn, ZoomOut, Download, Search, X,
 } from 'lucide-react'
 import { GanttTooltip } from '@/components/projets/gantt-tooltip'
 import { PertView } from '@/components/projets/pert-view'
@@ -40,6 +40,9 @@ import { useResizableColumns, createTaskListComponents } from '@/components/proj
 import {
   findDependencyConflicts, toLocalISO, computeCriticalPath, completionRate,
 } from '@/lib/gantt-deps'
+import {
+  feriesCourants, prochainJourOuvre, precedentJourOuvre, addJoursOuvres, joursOuvresEntre, estJourOuvre,
+} from '@/lib/jours-ouvres'
 import {
   updateTaskDates, updateMilestoneDate, updatePhaseWithTasks, updateTaskProgress,
 } from '@/app/actions/gantt'
@@ -83,6 +86,8 @@ interface ProjectGanttProps {
   milestones: ProjectMilestone[]
   dependencies: TaskDependency[]
   collaborateurs: Collaborateur[]
+  // Coût total du projet (affectations de ressources) — null si aucune
+  coutTotal?: number | null
 }
 
 function toDate(d: string | null): Date | null {
@@ -108,7 +113,7 @@ function initials(nom: string): string {
 }
 
 export function ProjectGantt({
-  projectId, projectTitre, phases, tasks, milestones, dependencies, collaborateurs,
+  projectId, projectTitre, phases, tasks, milestones, dependencies, collaborateurs, coutTotal,
 }: ProjectGanttProps) {
   const router = useRouter()
   const [viewMode, setViewMode] = useState<VM>('Week')
@@ -167,10 +172,13 @@ export function ProjectGantt({
     [collaborateurs]
   )
 
-  // Conflits de dépendances : successeur qui commence avant la fin de son prérequis
+  // Jours fériés France (année passée → +3 ans) : planification en jours ouvrés
+  const feries = useMemo(() => feriesCourants(), [])
+
+  // Conflits de dépendances : contrainte du lien (type + lag) non respectée
   const conflicts = useMemo(
-    () => findDependencyConflicts(localTasks, dependencies),
-    [localTasks, dependencies]
+    () => findDependencyConflicts(localTasks, dependencies, feries),
+    [localTasks, dependencies, feries]
   )
   const conflictTaskIds = useMemo(
     () => new Set(conflicts.map((c) => c.successor.id)),
@@ -186,6 +194,50 @@ export function ProjectGantt({
   // Taux de réalisation global (pondéré par la durée des tâches)
   const realisation = useMemo(() => completionRate(localTasks), [localTasks])
 
+  // Filtres et recherche (n'affectent que l'affichage — jamais les calculs
+  // globaux : réalisation, conflits et chemin critique restent sur tout le projet)
+  const [recherche, setRecherche] = useState('')
+  const [filtreResp, setFiltreResp] = useState(NONE)
+  const [filtreStatut, setFiltreStatut] = useState(NONE)
+  const filtresActifs = recherche.trim() !== '' || filtreResp !== NONE || filtreStatut !== NONE
+
+  const tachesAffichees = useMemo(() => {
+    if (!filtresActifs) return localTasks
+    const q = recherche.trim().toLowerCase()
+    const gardees = new Set(
+      localTasks
+        .filter((t) =>
+          (!q || t.titre.toLowerCase().includes(q)) &&
+          (filtreResp === NONE || t.responsable_id === filtreResp) &&
+          (filtreStatut === NONE || t.statut === filtreStatut)
+        )
+        .map((t) => t.id)
+    )
+    // Les ancêtres d'une sous-tâche gardée restent visibles (sinon la ligne
+    // parente manquerait et l'imbrication du Gantt serait cassée).
+    const byId = new Map(localTasks.map((t) => [t.id, t]))
+    for (const id of Array.from(gardees)) {
+      let cur = byId.get(id)?.parent_task_id
+      while (cur && !gardees.has(cur)) { gardees.add(cur); cur = byId.get(cur)?.parent_task_id }
+    }
+    return localTasks.filter((t) => gardees.has(t.id))
+  }, [localTasks, recherche, filtreResp, filtreStatut, filtresActifs])
+
+  // Indicateurs clés du projet
+  const finPrevue = useMemo(() => {
+    const fins = [
+      ...localPhases.map((p) => p.date_fin),
+      ...localTasks.map((t) => t.date_fin),
+      ...localMilestones.map((mi) => mi.date_echeance),
+    ].filter(Boolean) as string[]
+    return fins.length > 0 ? fins.reduce((a, b) => (a > b ? a : b)) : null
+  }, [localPhases, localTasks, localMilestones])
+
+  const nbEnRetard = useMemo(() => {
+    const auj = toLocalISO(new Date())
+    return localTasks.filter((t) => t.date_fin && t.date_fin < auj && t.statut !== 'fait').length
+  }, [localTasks])
+
   // Construction des lignes du Gantt en ORDRE CHRONOLOGIQUE :
   // chaque « bloc » (phase + ses tâches, tâche isolée, jalon) est daté puis
   // trié — un jalon s'insère donc à sa place dans le temps au lieu d'être
@@ -198,7 +250,8 @@ export function ProjectGantt({
     // Tâches ayant des sous-tâches : leur barre devient type 'project' (bracket
     // + expander ▼/▶) pour les imbriquer visuellement, comme une phase le fait
     // pour ses tâches.
-    const aDesSousTaches = new Set(localTasks.filter((t) => t.parent_task_id).map((t) => t.parent_task_id!))
+    const aDesSousTaches = new Set(tachesAffichees.filter((t) => t.parent_task_id).map((t) => t.parent_task_id!))
+    const idsAffiches = new Set(tachesAffichees.map((t) => t.id))
 
     for (const p of phasesAvecDates) {
       const items: GanttTask[] = [{
@@ -214,7 +267,7 @@ export function ProjectGantt({
       }]
       // tâches de premier niveau de la phase (pas les sous-tâches, imbriquées
       // via buildTaskEtSousTaches), triées par date de début
-      const enfants = localTasks
+      const enfants = tachesAffichees
         .filter((t) => t.phase_id === p.id && !t.parent_task_id && toDate(t.date_debut) && toDate(t.date_fin))
         .sort((a, b) => a.date_debut!.localeCompare(b.date_debut!))
       for (const t of enfants) items.push(...buildTaskEtSousTaches(t, `phase_${p.id}`))
@@ -222,7 +275,7 @@ export function ProjectGantt({
     }
 
     // tâches de premier niveau sans phase (ou phase sans dates) → bloc individuel
-    for (const t of localTasks) {
+    for (const t of tachesAffichees) {
       if (t.parent_task_id) continue
       if (t.phase_id && phaseIdsDates.has(t.phase_id)) continue
       if (!toDate(t.date_debut) || !toDate(t.date_fin)) continue
@@ -277,7 +330,11 @@ export function ProjectGantt({
       const color = showCritical
         ? (criticalIds.has(t.id) ? '#dc2626' : '#cbd5e1')
         : (STATUT_COLOR[t.statut] ?? '#3b82f6')
-      const deps = dependencies.filter((d) => d.successor_id === t.id).map((d) => `task_${d.predecessor_id}`)
+      // Flèches limitées aux prédécesseurs visibles (une flèche vers une ligne
+      // masquée par un filtre ferait planter le rendu de la lib)
+      const deps = dependencies
+        .filter((d) => d.successor_id === t.id && idsAffiches.has(d.predecessor_id))
+        .map((d) => `task_${d.predecessor_id}`)
       const baseName = resp ? `[${initials(resp.nom)}] ${t.titre}` : t.titre
       return {
         id: `task_${t.id}`,
@@ -301,12 +358,12 @@ export function ProjectGantt({
     // début), imbriquées juste en dessous — même principe que phase → tâches.
     function buildTaskEtSousTaches(t: ProjectTask, project: string | undefined): GanttTask[] {
       const bar = buildTaskBar(t, project)
-      const sousTaches = localTasks
+      const sousTaches = tachesAffichees
         .filter((c) => c.parent_task_id === t.id && toDate(c.date_debut) && toDate(c.date_fin))
         .sort((a, b) => a.date_debut!.localeCompare(b.date_debut!))
       return [bar, ...sousTaches.flatMap((c) => buildTaskEtSousTaches(c, `task_${t.id}`))]
     }
-  }, [localPhases, localTasks, localMilestones, dependencies, collabById, conflictTaskIds, showCritical, criticalIds, collapsedPhases, projectTitre, realisation])
+  }, [localPhases, localTasks, tachesAffichees, localMilestones, dependencies, collabById, conflictTaskIds, showCritical, criticalIds, collapsedPhases, projectTitre, realisation])
 
   // Numérotation hiérarchique WBS (1, 1.1, 1.1.1…) façon MS Project, déduite
   // de l'ordre d'affichage et du champ project (parent) de chaque ligne.
@@ -383,16 +440,18 @@ export function ProjectGantt({
       ? fratrie.reduce((max, t) => (t.date_fin! > max ? t.date_fin! : max), fratrie[0].date_fin!)
       : null
 
+    // Dates en jours ouvrés : démarre le jour ouvré suivant la fratrie, dure
+    // 2 jours ouvrés (week-ends et fériés sautés).
     let debut: string
     if (dernierFin) {
-      debut = addDays(dernierFin, 1)
+      debut = addJoursOuvres(dernierFin, 1, feries)
     } else if (parent?.date_debut) {
-      debut = parent.date_debut
+      debut = prochainJourOuvre(parent.date_debut, feries)
     } else {
       const phase = phaseId ? localPhases.find((p) => p.id === phaseId) : null
-      debut = phase?.date_debut ?? toLocalISO(new Date())
+      debut = prochainJourOuvre(phase?.date_debut ?? toLocalISO(new Date()), feries)
     }
-    const fin = addDays(debut, 1)
+    const fin = addJoursOuvres(debut, 1, feries)
 
     const supabase = createClient()
     const { error } = await supabase.from('project_tasks').insert({
@@ -406,13 +465,41 @@ export function ProjectGantt({
     })
     if (error) toast.error(`Échec de l'ajout : ${error.message}`)
     else router.refresh()
-  }, [taskById, localTasks, localPhases, projectId, router])
+  }, [taskById, localTasks, localPhases, projectId, router, feries])
 
   const wbsDe = useCallback((ganttId: string) => wbsById.get(ganttId) ?? '', [wbsById])
 
+  // Largeur de colonne du Gantt (partagée entre la prop columnWidth et le
+  // calcul du fond des jours non ouvrés).
+  const columnWidth = Math.round((viewMode === 'Month' ? 200 : viewMode === 'Week' ? 140 : 60) * zoom)
+
+  // Grisage des week-ends et fériés (vue Jour uniquement — en Semaine/Mois une
+  // colonne couvre plusieurs jours). gantt-task-react n'expose pas le style de
+  // ses colonnes : on réplique son calcul de plage interne (vue Day : départ =
+  // min(start) − preStepsCount(=1) jour, fin = max(end) + 19 jours) et on
+  // peint un dégradé à bandes sur le conteneur du SVG, les lignes de la grille
+  // étant rendues translucides par le <style> ci-dessous.
+  const fondJoursNonOuvres = useMemo(() => {
+    if (viewMode !== 'Day' || ganttTasks.length === 0) return null
+    const minStart = new Date(Math.min(...ganttTasks.map((t) => t.start.getTime())))
+    const maxEnd = new Date(Math.max(...ganttTasks.map((t) => t.end.getTime())))
+    const debut = new Date(minStart); debut.setHours(0, 0, 0, 0); debut.setDate(debut.getDate() - 1)
+    const fin = new Date(maxEnd); fin.setHours(0, 0, 0, 0); fin.setDate(fin.getDate() + 19)
+    const segments: string[] = ['transparent 0px']
+    const cur = new Date(debut)
+    for (let i = 0; cur <= fin && i < 1000; i++, cur.setDate(cur.getDate() + 1)) {
+      if (!estJourOuvre(toLocalISO(cur), feries)) {
+        segments.push(`transparent ${i * columnWidth}px`)
+        segments.push(`rgba(148,163,184,0.18) ${i * columnWidth}px ${(i + 1) * columnWidth}px`)
+        segments.push(`transparent ${(i + 1) * columnWidth}px`)
+      }
+    }
+    return `linear-gradient(to right, ${segments.join(', ')})`
+  }, [viewMode, ganttTasks, columnWidth, feries])
+
   const { Header: TaskListHeader, Table: TaskListTable } = useMemo(
-    () => createTaskListComponents(colWidths, startResize, titreReel, handleRename, handleAjouterTache, wbsDe),
-    [colWidths, startResize, titreReel, handleRename, handleAjouterTache, wbsDe]
+    () => createTaskListComponents(colWidths, startResize, titreReel, handleRename, handleAjouterTache, wbsDe, feries),
+    [colWidths, startResize, titreReel, handleRename, handleAjouterTache, wbsDe, feries]
   )
 
   const TooltipContent = useMemo(() => {
@@ -472,25 +559,80 @@ export function ProjectGantt({
     const m = task.id.match(/^(phase|task|ms)_(.+)$/)
     if (!m) return
     const [, kind, id] = m
-    const newDebut = toISO(task.start)
-    const newFin = toISO(task.end)
+    let newDebut = toISO(task.start)
+    let newFin = toISO(task.end)
 
     if (kind === 'task') {
+      const avant = taskById.get(id)
+      // Planification en jours ouvrés : un drag qui atterrit sur un week-end
+      // ou un férié est recalé. Déplacement (durée calendaire inchangée) :
+      // début recalé au jour ouvré suivant, durée OUVRÉE d'origine conservée.
+      // Redimensionnement : chaque bord est recalé indépendamment.
+      const estDeplacement = avant?.date_debut && avant.date_fin &&
+        diffDays(newDebut, newFin) === diffDays(avant.date_debut, avant.date_fin)
+      if (estDeplacement && avant?.date_debut && avant.date_fin) {
+        const dureeOuvree = Math.max(1, joursOuvresEntre(avant.date_debut, avant.date_fin, feries))
+        newDebut = prochainJourOuvre(newDebut, feries)
+        newFin = addJoursOuvres(newDebut, dureeOuvree - 1, feries)
+      } else {
+        newDebut = prochainJourOuvre(newDebut, feries)
+        newFin = precedentJourOuvre(newFin, feries)
+        if (newFin < newDebut) newFin = newDebut
+      }
+
       const prev = localTasks
-      const updated = localTasks.map((t) => (t.id === id ? { ...t, date_debut: newDebut, date_fin: newFin } : t))
+      let updated = localTasks.map((t) => (t.id === id ? { ...t, date_debut: newDebut, date_fin: newFin } : t))
+
+      // Recalage AUTOMATIQUE en cascade des successeurs : si la tâche déplacée
+      // est prérequis d'autres tâches dont la contrainte (type + lag) n'est
+      // plus respectée, celles-ci sont décalées (durée ouvrée conservée), et
+      // ainsi de suite le long de la chaîne. La tâche déplacée elle-même n'est
+      // jamais re-déplacée (pas de retour en arrière surprise) : si c'est ELLE
+      // qui viole une contrainte en tant que successeur, on avertit seulement.
+      const deplacees = new Set([id])
+      const recalees: { id: string; debut: string; fin: string; titre: string }[] = []
+      for (let garde = 0; garde < 25; garde++) {
+        const aRecaler = findDependencyConflicts(updated, dependencies, feries)
+          .find((c) => deplacees.has(c.predecessor.id) && !deplacees.has(c.successor.id))
+        if (!aRecaler) break
+        updated = updated.map((t) => (t.id === aRecaler.successor.id
+          ? { ...t, date_debut: aRecaler.suggestedStart, date_fin: aRecaler.suggestedEnd }
+          : t))
+        deplacees.add(aRecaler.successor.id)
+        recalees.push({
+          id: aRecaler.successor.id,
+          debut: aRecaler.suggestedStart,
+          fin: aRecaler.suggestedEnd,
+          titre: aRecaler.successor.titre,
+        })
+      }
       setLocalTasks(updated)
-      // Avertit (sans bloquer) si le déplacement viole une dépendance,
-      // que la tâche déplacée soit successeur ou prérequis.
-      const broken = findDependencyConflicts(updated, dependencies)
-        .filter((c) => c.successor.id === id || c.predecessor.id === id)
-      if (broken.length > 0) {
-        const c = broken[0]
+
+      const brokenAmont = findDependencyConflicts(updated, dependencies, feries)
+        .filter((c) => c.successor.id === id)
+      if (brokenAmont.length > 0) {
+        const c = brokenAmont[0]
         toast.warning(
-          `Dépendance violée : « ${c.successor.titre} » démarre avant la fin de « ${c.predecessor.titre} ». Voir le panneau Dépendances pour recaler.`
+          `Dépendance violée : « ${c.successor.titre} » démarre avant la contrainte de « ${c.predecessor.titre} ». Voir le panneau Dépendances pour recaler.`
         )
       }
+
       const res = await updateTaskDates(id, newDebut, newFin, projectId)
-      if (!res.ok) { setLocalTasks(prev); toast.error('Échec de la mise à jour de la tâche') }
+      if (!res.ok) { setLocalTasks(prev); toast.error('Échec de la mise à jour de la tâche'); return }
+      let echecRecalage = false
+      for (const r of recalees) {
+        const resR = await updateTaskDates(r.id, r.debut, r.fin, projectId)
+        if (!resR.ok) echecRecalage = true
+      }
+      if (echecRecalage) {
+        toast.error('Certains successeurs n\'ont pas pu être recalés — rechargez la page.')
+      } else if (recalees.length > 0) {
+        toast.info(
+          recalees.length === 1
+            ? `« ${recalees[0].titre} » recalée automatiquement (dépendance).`
+            : `${recalees.length} tâches successeurs recalées automatiquement.`
+        )
+      }
     } else if (kind === 'phase') {
       const phase = localPhases.find((p) => p.id === id)
       const delta = phase?.date_debut ? diffDays(phase.date_debut, newDebut) : 0
@@ -557,7 +699,42 @@ export function ProjectGantt({
     }
   }
 
-  const vide = ganttTasks.length === 0
+  // Export CSV (compatible Excel : BOM UTF-8 + séparateur point-virgule)
+  function exporterCSV() {
+    const lignes: string[][] = [['N°', 'Tâche', 'Durée (j ouvrés)', 'Début', 'Fin', 'Avancement %', 'Statut', 'Responsable']]
+    for (const l of ganttTasks) {
+      if (l.id === 'projet_global') continue
+      const m = l.id.match(/^(phase|task|ms)_(.+)$/)
+      const t = m?.[1] === 'task' ? taskById.get(m[2]) : undefined
+      lignes.push([
+        wbsById.get(l.id) ?? '',
+        titreReel(l.id),
+        l.type === 'milestone' ? '' : String(joursOuvresEntre(toISO(l.start), toISO(l.end), feries)),
+        toISO(l.start),
+        l.type === 'milestone' ? '' : toISO(l.end),
+        t ? String(t.avancement ?? 0) : String(Math.round(l.progress)),
+        t ? STATUT_LABEL[t.statut] : l.type === 'milestone' ? 'Jalon' : 'Phase',
+        t?.responsable_id ? collabById[t.responsable_id]?.nom ?? '' : '',
+      ])
+    }
+    const csv = '﻿' + lignes.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(';')).join('\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a')
+    a.href = url
+    const slug = projectTitre.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'projet'
+    a.download = `planning-${slug}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // « vide » = aucune donnée datée du tout (indépendant des filtres) : sinon un
+  // filtre sans résultat afficherait « ajoutez des dates » au lieu de la barre.
+  const vide = useMemo(() => {
+    const aDate = (a: string | null, b: string | null) => !!toDate(a) && !!toDate(b)
+    return !localPhases.some((p) => aDate(p.date_debut, p.date_fin))
+      && !localTasks.some((t) => aDate(t.date_debut, t.date_fin))
+      && !localMilestones.some((mi) => !!toDate(mi.date_echeance))
+  }, [localPhases, localTasks, localMilestones])
 
   return (
     <div className={fullscreen ? 'fixed inset-0 z-50 bg-white overflow-auto p-4' : ''}>
@@ -570,6 +747,15 @@ export function ProjectGantt({
         .gantt-print-area { position: absolute !important; left: 0; top: 0; width: 100%; overflow: visible !important; }
         .gantt-print-area .overflow-x-auto, .gantt-print-area .overflow-auto { overflow: visible !important; }
       }
+      /* Grisage des jours non ouvrés (vue Jour) : les lignes de grille de
+         gantt-task-react (rects SVG opaques, classes hachées stables car la
+         version de la lib est verrouillée) deviennent translucides pour
+         laisser voir le dégradé peint sur leur conteneur (_2B2zv). */
+      ${fondJoursNonOuvres ? `
+      .gantt-print-area ._2B2zv { background-image: ${fondJoursNonOuvres}; background-repeat: no-repeat; }
+      .gantt-print-area ._2dZTy { fill: transparent; }
+      .gantt-print-area ._2dZTy:nth-child(even) { fill: rgba(0,0,0,0.025); }
+      ` : ''}
     `}</style>
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3 flex-wrap gap-2">
@@ -579,6 +765,21 @@ export function ProjectGantt({
           {localTasks.length > 0 && (
             <span className="text-xs font-medium text-[#534AB7] bg-[#EEEBFA] px-2 py-0.5 rounded-full">
               Réalisation : {realisation} %
+            </span>
+          )}
+          {finPrevue && (
+            <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+              Fin prévue : {new Date(finPrevue + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </span>
+          )}
+          {nbEnRetard > 0 && (
+            <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+              {nbEnRetard} en retard
+            </span>
+          )}
+          {(coutTotal ?? 0) > 0 && (
+            <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+              Coût : {(coutTotal as number).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
             </span>
           )}
           {conflicts.length > 0 && (
@@ -647,6 +848,13 @@ export function ProjectGantt({
           )}
 
           <button
+            onClick={exporterCSV}
+            title="Exporter le planning en CSV (Excel)"
+            className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-800 transition-colors"
+          >
+            <Download className="h-3.5 w-3.5" />
+          </button>
+          <button
             onClick={() => window.print()}
             title="Imprimer le planning (format paysage)"
             className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-800 transition-colors"
@@ -673,25 +881,76 @@ export function ProjectGantt({
           </p>
         ) : (
           <>
-            <div className="overflow-x-auto border rounded-lg gantt-print-area">
-              <Gantt
-                tasks={ganttTasks}
-                /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-                viewMode={viewMode as any}
-                locale="fr"
-                onDateChange={handleDateChange}
-                onProgressChange={handleProgressChange}
-                onClick={handleClick}
-                onExpanderClick={(t) => togglePhase(t.id)}
-                TaskListHeader={TaskListHeader}
-                TaskListTable={TaskListTable}
-                TooltipContent={TooltipContent}
-                listCellWidth="220px"
-                columnWidth={Math.round((viewMode === 'Month' ? 200 : viewMode === 'Week' ? 140 : 60) * zoom)}
-                barCornerRadius={4}
-                todayColor="rgba(83,74,183,0.10)"
-              />
+            {/* Barre de filtres et recherche (n'affecte que l'affichage) */}
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <div className="relative">
+                <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <Input
+                  value={recherche}
+                  onChange={(e) => setRecherche(e.target.value)}
+                  placeholder="Rechercher une tâche…"
+                  className="h-9 w-56 pl-8 text-sm"
+                />
+              </div>
+              <Select value={filtreResp} onValueChange={(v) => setFiltreResp(v ?? NONE)}>
+                <SelectTrigger className="h-9 text-xs w-40">
+                  <SelectValue>
+                    {(v: string) => (v === NONE ? 'Tous les responsables' : collabById[v]?.nom ?? 'Responsable')}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Tous les responsables</SelectItem>
+                  {collaborateurs.map((c) => <SelectItem key={c.id} value={c.id}>{c.nom}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={filtreStatut} onValueChange={(v) => setFiltreStatut(v ?? NONE)}>
+                <SelectTrigger className="h-9 text-xs w-36">
+                  <SelectValue>
+                    {(v: string) => (v === NONE ? 'Tous les statuts' : STATUT_LABEL[v as ProjectTaskStatus] ?? 'Statut')}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Tous les statuts</SelectItem>
+                  {(Object.keys(STATUT_LABEL) as ProjectTaskStatus[]).map((s) => (
+                    <SelectItem key={s} value={s}>{STATUT_LABEL[s]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {filtresActifs && (
+                <button
+                  onClick={() => { setRecherche(''); setFiltreResp(NONE); setFiltreStatut(NONE) }}
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 px-2 py-1"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Réinitialiser
+                </button>
+              )}
             </div>
+            {ganttTasks.length === 0 ? (
+              <p className="text-sm text-gray-400 py-6 text-center">
+                Aucune tâche ne correspond aux filtres.
+              </p>
+            ) : (
+              <div className="overflow-x-auto border rounded-lg gantt-print-area">
+                <Gantt
+                  tasks={ganttTasks}
+                  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+                  viewMode={viewMode as any}
+                  locale="fr"
+                  onDateChange={handleDateChange}
+                  onProgressChange={handleProgressChange}
+                  onClick={handleClick}
+                  onExpanderClick={(t) => togglePhase(t.id)}
+                  TaskListHeader={TaskListHeader}
+                  TaskListTable={TaskListTable}
+                  TooltipContent={TooltipContent}
+                  listCellWidth="220px"
+                  columnWidth={columnWidth}
+                  barCornerRadius={4}
+                  todayColor="rgba(83,74,183,0.10)"
+                />
+              </div>
+            )}
             {conflicts.length > 0 && (
               <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
                 <p className="text-xs font-medium text-amber-700 flex items-center gap-1.5 mb-1">

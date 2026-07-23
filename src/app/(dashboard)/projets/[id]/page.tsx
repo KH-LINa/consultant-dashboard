@@ -50,6 +50,18 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
     ? await supabase.from('task_dependencies').select('*').in('predecessor_id', taskIds)
     : { data: [] }
 
+  // Coût total du projet : affectations de ressources (heures × coût horaire + budget)
+  const { data: assignments } = await supabase
+    .from('resource_assignments')
+    .select('heures, budget, resource:resources(cout_horaire)')
+    .eq('project_id', params.id)
+  const coutTotal = (assignments ?? []).reduce((somme, a: {
+    heures: number; budget: number; resource: { cout_horaire: number } | { cout_horaire: number }[] | null
+  }) => {
+    const res = Array.isArray(a.resource) ? a.resource[0] : a.resource
+    return somme + (a.heures || 0) * (res?.cout_horaire || 0) + (a.budget || 0)
+  }, 0)
+
   const st = statutLabel[project.statut as ProjectStatus]
 
   // Avancement global = moyenne de l'avancement des tâches
@@ -140,6 +152,7 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
         milestones={milestonesList}
         dependencies={dependencies ?? []}
         collaborateurs={collaborateurs ?? []}
+        coutTotal={coutTotal}
       />
 
       <CollaborateursManager collaborateurs={collaborateurs ?? []} />
