@@ -20,6 +20,7 @@ import {
   LogOut,
   Briefcase,
   FileSignature,
+  HardHat,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -31,6 +32,7 @@ const navItems = [
   { href: '/missions', label: 'Missions', icon: FolderKanban },
   { href: '/factures', label: 'Factures', icon: Receipt },
   { href: '/projets', label: 'Projets', icon: FolderGit2 },
+  { href: '/ressources', label: 'Ressources', icon: HardHat },
   { href: '/relances', label: 'Relances', icon: Bell },
   { href: '/comptabilite', label: 'Comptabilité', icon: Landmark },
   { href: '/documents', label: 'Documents', icon: FolderArchive },

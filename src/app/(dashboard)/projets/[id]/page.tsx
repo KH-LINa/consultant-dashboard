@@ -134,6 +134,7 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
       {/* Planning Gantt interactif */}
       <ProjectGantt
         projectId={project.id}
+        projectTitre={project.titre}
         phases={phasesList}
         tasks={tasksList}
         milestones={milestonesList}

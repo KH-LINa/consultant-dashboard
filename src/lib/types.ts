@@ -97,6 +97,30 @@ export interface ProjectTask {
   created_at: string
 }
 
+export type ResourceType = 'humain' | 'materiel'
+
+export interface Resource {
+  id: string
+  nom: string
+  type: ResourceType
+  // €/h ; 0 = coût non chiffré (le coût estimé n'utilise alors que le budget)
+  cout_horaire: number
+  notes: string | null
+  created_at: string
+}
+
+export interface ResourceAssignment {
+  id: string
+  resource_id: string
+  project_id: string
+  task_id: string | null
+  heures: number
+  budget: number
+  created_at: string
+  project?: Pick<Project, 'id' | 'titre'>
+  task?: Pick<ProjectTask, 'id' | 'titre'>
+}
+
 export interface TaskDependency {
   id: string
   predecessor_id: string

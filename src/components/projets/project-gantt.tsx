@@ -77,6 +77,7 @@ function fmtTooltipDate(d: Date): string {
 
 interface ProjectGanttProps {
   projectId: string
+  projectTitre: string
   phases: ProjectPhase[]
   tasks: ProjectTask[]
   milestones: ProjectMilestone[]
@@ -107,7 +108,7 @@ function initials(nom: string): string {
 }
 
 export function ProjectGantt({
-  projectId, phases, tasks, milestones, dependencies, collaborateurs,
+  projectId, projectTitre, phases, tasks, milestones, dependencies, collaborateurs,
 }: ProjectGanttProps) {
   const router = useRouter()
   const [viewMode, setViewMode] = useState<VM>('Week')
@@ -248,7 +249,27 @@ export function ProjectGantt({
     }
 
     blocks.sort((a, b) => a.start.localeCompare(b.start) || a.prio - b.prio)
-    return blocks.flatMap((b) => b.items)
+    const lignes = blocks.flatMap((b) => b.items)
+
+    // Ligne récapitulative du projet (cf. MS Project) : une barre unique en
+    // tête, couvrant tout le planning, avec l'avancement global. Purement
+    // visuelle : pas repliable, pas déplaçable (aucun préfixe phase|task|ms
+    // reconnu par les handlers).
+    if (lignes.length > 0) {
+      const debutProjet = new Date(Math.min(...lignes.map((l) => l.start.getTime())))
+      const finProjet = new Date(Math.max(...lignes.map((l) => l.end.getTime())))
+      lignes.unshift({
+        id: 'projet_global',
+        name: projectTitre,
+        start: debutProjet,
+        end: finProjet,
+        type: 'project',
+        progress: realisation,
+        isDisabled: true,
+        styles: { backgroundColor: '#534AB7', progressColor: '#3d3591', backgroundSelectedColor: '#534AB7' },
+      })
+    }
+    return lignes
 
     function buildTaskBar(t: ProjectTask, project: string | undefined): GanttTask {
       const resp = t.responsable_id ? collabById[t.responsable_id] : null
@@ -285,7 +306,23 @@ export function ProjectGantt({
         .sort((a, b) => a.date_debut!.localeCompare(b.date_debut!))
       return [bar, ...sousTaches.flatMap((c) => buildTaskEtSousTaches(c, `task_${t.id}`))]
     }
-  }, [localPhases, localTasks, localMilestones, dependencies, collabById, conflictTaskIds, showCritical, criticalIds, collapsedPhases])
+  }, [localPhases, localTasks, localMilestones, dependencies, collabById, conflictTaskIds, showCritical, criticalIds, collapsedPhases, projectTitre, realisation])
+
+  // Numérotation hiérarchique WBS (1, 1.1, 1.1.1…) façon MS Project, déduite
+  // de l'ordre d'affichage et du champ project (parent) de chaque ligne.
+  // La ligne récapitulative du projet n'est pas numérotée.
+  const wbsById = useMemo(() => {
+    const compteurs = new Map<string, number>()
+    const wbs = new Map<string, string>()
+    for (const l of ganttTasks) {
+      if (l.id === 'projet_global') continue
+      const parent = l.project && wbs.has(l.project) ? l.project : ''
+      const n = (compteurs.get(parent) ?? 0) + 1
+      compteurs.set(parent, n)
+      wbs.set(l.id, parent ? `${wbs.get(parent)}.${n}` : `${n}`)
+    }
+    return wbs
+  }, [ganttTasks])
 
   // Info-bulle au survol : la lib n'expose que {name, start, end, progress} par
   // défaut (et en anglais) — on reconstitue les tâches/phases/jalons d'origine
@@ -297,24 +334,32 @@ export function ProjectGantt({
   // ex. "[XX] Titre" pour un responsable, "⚠ Titre" en cas de conflit) —
   // utilisé pour l'édition directe du titre dans la liste de gauche.
   const titreReel = useCallback((ganttId: string) => {
+    if (ganttId === 'projet_global') return projectTitre
     const m = ganttId.match(/^(phase|task|ms)_(.+)$/)
     if (!m) return ''
     const [, kind, id] = m
     if (kind === 'phase') return localPhases.find((p) => p.id === id)?.titre ?? ''
     if (kind === 'task') return taskById.get(id)?.titre ?? ''
     return milestoneById.get(id)?.titre ?? ''
-  }, [localPhases, taskById, milestoneById])
+  }, [localPhases, taskById, milestoneById, projectTitre])
 
   const handleRename = useCallback(async (ganttId: string, nouveauTitre: string) => {
+    const supabase = createClient()
+    // La ligne récapitulative renomme le projet lui-même
+    if (ganttId === 'projet_global') {
+      const { error } = await supabase.from('projects').update({ titre: nouveauTitre }).eq('id', projectId)
+      if (error) toast.error(`Échec du renommage : ${error.message}`)
+      else router.refresh()
+      return
+    }
     const m = ganttId.match(/^(phase|task|ms)_(.+)$/)
     if (!m) return
     const [, kind, id] = m
     const table = kind === 'phase' ? 'project_phases' : kind === 'task' ? 'project_tasks' : 'project_milestones'
-    const supabase = createClient()
     const { error } = await supabase.from(table).update({ titre: nouveauTitre }).eq('id', id)
     if (error) toast.error(`Échec du renommage : ${error.message}`)
     else router.refresh()
-  }, [router])
+  }, [router, projectId])
 
   // « + » par ligne : sur une phase, ajoute une tâche de premier niveau ;
   // sur une tâche, ajoute une SOUS-TÂCHE (parent_task_id) imbriquée dessous
@@ -363,9 +408,11 @@ export function ProjectGantt({
     else router.refresh()
   }, [taskById, localTasks, localPhases, projectId, router])
 
+  const wbsDe = useCallback((ganttId: string) => wbsById.get(ganttId) ?? '', [wbsById])
+
   const { Header: TaskListHeader, Table: TaskListTable } = useMemo(
-    () => createTaskListComponents(colWidths, startResize, titreReel, handleRename, handleAjouterTache),
-    [colWidths, startResize, titreReel, handleRename, handleAjouterTache]
+    () => createTaskListComponents(colWidths, startResize, titreReel, handleRename, handleAjouterTache, wbsDe),
+    [colWidths, startResize, titreReel, handleRename, handleAjouterTache, wbsDe]
   )
 
   const TooltipContent = useMemo(() => {

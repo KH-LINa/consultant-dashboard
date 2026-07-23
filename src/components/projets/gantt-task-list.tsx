@@ -12,12 +12,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Task } from 'gantt-task-react'
 import { Plus } from 'lucide-react'
 
-export interface ColWidths { name: number; from: number; to: number }
+export interface ColWidths { name: number; dur: number; from: number; to: number }
 
-const DEFAULT_WIDTHS: ColWidths = { name: 170, from: 110, to: 110 }
+const DEFAULT_WIDTHS: ColWidths = { name: 190, dur: 64, from: 110, to: 110 }
 const MIN_W = 44
 const MAX_W = 420
-const STORAGE_KEY = 'gantt-col-widths-v1'
+// v2 : ajout de la colonne Durée (l'ancien schéma v1 sans `dur` est ignoré)
+const STORAGE_KEY = 'gantt-col-widths-v2'
 
 export function useResizableColumns() {
   const [widths, setWidths] = useState<ColWidths>(() => {
@@ -26,7 +27,7 @@ export function useResizableColumns() {
       const raw = localStorage.getItem(STORAGE_KEY)
       if (raw) {
         const p = JSON.parse(raw)
-        if (typeof p?.name === 'number' && typeof p?.from === 'number' && typeof p?.to === 'number') return p
+        if (typeof p?.name === 'number' && typeof p?.dur === 'number' && typeof p?.from === 'number' && typeof p?.to === 'number') return p
       }
     } catch { /* stockage indisponible : largeurs par défaut */ }
     return DEFAULT_WIDTHS
@@ -79,12 +80,20 @@ function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => v
 
 const COLS: { key: keyof ColWidths; label: string }[] = [
   { key: 'name', label: 'Tâche' },
+  { key: 'dur', label: 'Durée' },
   { key: 'from', label: 'Début' },
   { key: 'to', label: 'Fin' },
 ]
 
 function fmtDate(d: Date): string {
   return d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+/** Durée en jours pleins (début et fin inclus) — "—" pour un jalon (ponctuel). */
+function fmtDuree(t: Task): string {
+  if (t.type === 'milestone') return '—'
+  const jours = Math.round((t.end.getTime() - t.start.getTime()) / 86400000) + 1
+  return `${jours} j`
 }
 
 /**
@@ -96,13 +105,15 @@ function fmtDate(d: Date): string {
  * (phase/tâche/jalon) à éditer, onRename persiste le renommage en base.
  * onAddTask : ajoute une tâche rattachée à la phase de la ligne cliquée
  * (ou à la même phase qu'une tâche cliquée) — pas de bouton sur les jalons.
+ * wbs : numéro hiérarchique de la ligne (1, 1.1, 1.1.1…), vide si non numérotée.
  */
 export function createTaskListComponents(
   widths: ColWidths,
   startResize: (col: keyof ColWidths, e: React.MouseEvent) => void,
   titreReel: (ganttId: string) => string,
   onRename: (ganttId: string, nouveauTitre: string) => void,
-  onAddTask: (ganttId: string) => void
+  onAddTask: (ganttId: string) => void,
+  wbs: (ganttId: string) => string
 ) {
   const Header: React.FC<{ headerHeight: number; fontFamily: string; fontSize: string }> =
     ({ headerHeight, fontFamily, fontSize }) => (
@@ -126,12 +137,16 @@ export function createTaskListComponents(
   }> = ({ rowHeight, fontFamily, fontSize, tasks, onExpanderClick }) => (
     <div style={{ fontFamily, fontSize }}>
       {tasks.map((t) => (
-        <div key={t.id} style={{ height: rowHeight }} className="group flex items-center border-b border-gray-50">
+        <div key={t.id} style={{ height: rowHeight }}
+          className={`group flex items-center border-b border-gray-50 ${t.id === 'projet_global' ? 'bg-[#EEEBFA]/60' : ''}`}>
           <div style={{ width: widths.name, minWidth: widths.name }} className="flex items-center gap-1 px-3 overflow-hidden">
-            {t.type === 'project' ? (
+            {wbs(t.id) && (
+              <span className="shrink-0 w-9 text-[10px] tabular-nums text-gray-400">{wbs(t.id)}</span>
+            )}
+            {t.id !== 'projet_global' && t.type === 'project' ? (
               <button
                 onClick={() => onExpanderClick(t)}
-                title={t.hideChildren ? 'Déplier la phase' : 'Replier la phase'}
+                title={t.hideChildren ? 'Déplier' : 'Replier'}
                 className="w-4 shrink-0 text-[10px] text-gray-400 hover:text-gray-700"
               >
                 {t.hideChildren ? '▶' : '▼'}
@@ -161,7 +176,7 @@ export function createTaskListComponents(
               }}
               className={`flex-1 min-w-0 truncate bg-transparent border border-transparent outline-none rounded px-1 -mx-1 cursor-text hover:border-gray-300 focus:border-[#534AB7] focus:ring-1 focus:ring-[#534AB7] focus:bg-white ${t.type === 'project' ? 'font-semibold text-gray-800' : 'text-gray-700'}`}
             />
-            {t.type !== 'milestone' && (
+            {t.type !== 'milestone' && t.id !== 'projet_global' && (
               <button
                 onMouseDown={(e) => e.stopPropagation()}
                 onKeyDown={(e) => e.stopPropagation()}
@@ -172,6 +187,9 @@ export function createTaskListComponents(
                 <Plus className="h-3 w-3" />
               </button>
             )}
+          </div>
+          <div style={{ width: widths.dur, minWidth: widths.dur }} className="px-3 truncate text-gray-500 tabular-nums">
+            {fmtDuree(t)}
           </div>
           <div style={{ width: widths.from, minWidth: widths.from }} className="px-3 truncate text-gray-500">
             {fmtDate(t.start)}
