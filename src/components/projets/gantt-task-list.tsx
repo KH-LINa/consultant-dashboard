@@ -143,17 +143,19 @@ export function createTaskListComponents(
             <input
               key={`ti-${t.id}-${titreReel(t.id)}`}
               defaultValue={titreReel(t.id)}
-              title={t.name}
+              title={titreReel(t.id)}
+              onMouseDown={(e) => e.stopPropagation()}
               onBlur={(e) => {
                 const v = e.target.value.trim()
                 if (v && v !== titreReel(t.id)) onRename(t.id, v)
                 else e.target.value = titreReel(t.id)
               }}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-              className={`w-full truncate bg-transparent border-0 outline-none rounded px-0.5 -mx-0.5 focus:ring-1 focus:ring-[#534AB7] ${t.type === 'project' ? 'font-semibold text-gray-800' : 'text-gray-700'}`}
+              className={`flex-1 min-w-0 truncate bg-transparent border border-transparent outline-none rounded px-1 -mx-1 cursor-text hover:border-gray-300 focus:border-[#534AB7] focus:ring-1 focus:ring-[#534AB7] focus:bg-white ${t.type === 'project' ? 'font-semibold text-gray-800' : 'text-gray-700'}`}
             />
             {t.type !== 'milestone' && (
               <button
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => onAddTask(t.id)}
                 title={t.type === 'project' ? 'Ajouter une tâche à cette phase' : 'Ajouter une tâche à côté'}
                 className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-[#534AB7] opacity-0 group-hover:opacity-100"
