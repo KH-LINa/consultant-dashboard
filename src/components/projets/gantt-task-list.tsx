@@ -150,12 +150,21 @@ export function createTaskListComponents(
                 if (v && v !== titreReel(t.id)) onRename(t.id, v)
                 else e.target.value = titreReel(t.id)
               }}
-              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+              onKeyDown={(e) => {
+                // gantt-task-react intercepte le keydown sur son wrapper englobant
+                // (raccourcis de défilement clavier) et appelle preventDefault()
+                // sur TOUTE touche, quel que soit l'élément d'origine — ce qui
+                // bloquait la saisie normale dans ce champ. stopPropagation
+                // empêche l'event d'atteindre ce wrapper.
+                e.stopPropagation()
+                if (e.key === 'Enter') e.currentTarget.blur()
+              }}
               className={`flex-1 min-w-0 truncate bg-transparent border border-transparent outline-none rounded px-1 -mx-1 cursor-text hover:border-gray-300 focus:border-[#534AB7] focus:ring-1 focus:ring-[#534AB7] focus:bg-white ${t.type === 'project' ? 'font-semibold text-gray-800' : 'text-gray-700'}`}
             />
             {t.type !== 'milestone' && (
               <button
                 onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
                 onClick={() => onAddTask(t.id)}
                 title={t.id.startsWith('phase_') ? 'Ajouter une tâche à cette phase' : 'Ajouter une sous-tâche'}
                 className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-[#534AB7] opacity-0 group-hover:opacity-100"
