@@ -157,7 +157,7 @@ export function createTaskListComponents(
               <button
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => onAddTask(t.id)}
-                title={t.type === 'project' ? 'Ajouter une tâche à cette phase' : 'Ajouter une tâche à côté'}
+                title={t.id.startsWith('phase_') ? 'Ajouter une tâche à cette phase' : 'Ajouter une sous-tâche'}
                 className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-[#534AB7] opacity-0 group-hover:opacity-100"
               >
                 <Plus className="h-3 w-3" />

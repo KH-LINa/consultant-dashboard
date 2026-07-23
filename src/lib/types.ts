@@ -85,6 +85,8 @@ export interface ProjectTask {
   id: string
   project_id: string
   phase_id: string | null
+  // Tâche parente pour une sous-tâche (imbriquée sous elle dans le Gantt) ; null = tâche de premier niveau.
+  parent_task_id: string | null
   responsable_id: string | null
   titre: string
   date_debut: string | null

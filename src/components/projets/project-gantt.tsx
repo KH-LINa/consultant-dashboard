@@ -194,6 +194,10 @@ export function ProjectGantt({
     const blocks: Block[] = []
     const phasesAvecDates = localPhases.filter((p) => toDate(p.date_debut) && toDate(p.date_fin))
     const phaseIdsDates = new Set(phasesAvecDates.map((p) => p.id))
+    // Tâches ayant des sous-tâches : leur barre devient type 'project' (bracket
+    // + expander ▼/▶) pour les imbriquer visuellement, comme une phase le fait
+    // pour ses tâches.
+    const aDesSousTaches = new Set(localTasks.filter((t) => t.parent_task_id).map((t) => t.parent_task_id!))
 
     for (const p of phasesAvecDates) {
       const items: GanttTask[] = [{
@@ -207,19 +211,21 @@ export function ProjectGantt({
         hideChildren: collapsedPhases.has(`phase_${p.id}`),
         styles: { backgroundColor: p.couleur, progressColor: shade(p.couleur), backgroundSelectedColor: p.couleur },
       }]
-      // tâches de la phase, triées par date de début
+      // tâches de premier niveau de la phase (pas les sous-tâches, imbriquées
+      // via buildTaskEtSousTaches), triées par date de début
       const enfants = localTasks
-        .filter((t) => t.phase_id === p.id && toDate(t.date_debut) && toDate(t.date_fin))
+        .filter((t) => t.phase_id === p.id && !t.parent_task_id && toDate(t.date_debut) && toDate(t.date_fin))
         .sort((a, b) => a.date_debut!.localeCompare(b.date_debut!))
-      for (const t of enfants) items.push(buildTaskBar(t, `phase_${p.id}`))
+      for (const t of enfants) items.push(...buildTaskEtSousTaches(t, `phase_${p.id}`))
       blocks.push({ start: p.date_debut!, prio: 0, items })
     }
 
-    // tâches sans phase (ou phase sans dates) → bloc individuel
+    // tâches de premier niveau sans phase (ou phase sans dates) → bloc individuel
     for (const t of localTasks) {
+      if (t.parent_task_id) continue
       if (t.phase_id && phaseIdsDates.has(t.phase_id)) continue
       if (!toDate(t.date_debut) || !toDate(t.date_fin)) continue
-      blocks.push({ start: t.date_debut!, prio: 0, items: [buildTaskBar(t, undefined)] })
+      blocks.push({ start: t.date_debut!, prio: 0, items: buildTaskEtSousTaches(t, undefined) })
     }
 
     // jalons → bloc individuel, inséré chronologiquement
@@ -257,7 +263,8 @@ export function ProjectGantt({
         name: conflictTaskIds.has(t.id) ? `⚠ ${baseName}` : baseName,
         start: toDate(t.date_debut)!,
         end: toDate(t.date_fin)!,
-        type: 'task',
+        type: aDesSousTaches.has(t.id) ? 'project' : 'task',
+        hideChildren: aDesSousTaches.has(t.id) ? collapsedPhases.has(`task_${t.id}`) : undefined,
         progress: t.avancement ?? 0,
         project,
         dependencies: deps,
@@ -267,6 +274,16 @@ export function ProjectGantt({
           backgroundSelectedColor: color,
         },
       }
+    }
+
+    // Barre de la tâche suivie de ses sous-tâches datées (triées par date de
+    // début), imbriquées juste en dessous — même principe que phase → tâches.
+    function buildTaskEtSousTaches(t: ProjectTask, project: string | undefined): GanttTask[] {
+      const bar = buildTaskBar(t, project)
+      const sousTaches = localTasks
+        .filter((c) => c.parent_task_id === t.id && toDate(c.date_debut) && toDate(c.date_fin))
+        .sort((a, b) => a.date_debut!.localeCompare(b.date_debut!))
+      return [bar, ...sousTaches.flatMap((c) => buildTaskEtSousTaches(c, `task_${t.id}`))]
     }
   }, [localPhases, localTasks, localMilestones, dependencies, collabById, conflictTaskIds, showCritical, criticalIds, collapsedPhases])
 
@@ -299,34 +316,45 @@ export function ProjectGantt({
     else router.refresh()
   }, [router])
 
-  // « + » par ligne : ajoute une tâche rattachée à la phase de la ligne
-  // cliquée (ou à la même phase qu'une tâche cliquée), chaînée après la
-  // dernière tâche existante de cette phase — pas de nouvelle notion en
-  // base, juste un raccourci pour ne pas quitter le Gantt.
+  // « + » par ligne : sur une phase, ajoute une tâche de premier niveau ;
+  // sur une tâche, ajoute une SOUS-TÂCHE (parent_task_id) imbriquée dessous
+  // dans le Gantt. Chaînée après la dernière sous-tâche/tâche existante du
+  // même parent — pas de nouvelle page, juste un raccourci depuis le Gantt.
   const handleAjouterTache = useCallback(async (ganttId: string) => {
     const m = ganttId.match(/^(phase|task)_(.+)$/)
     if (!m) return
     const [, kind, id] = m
-    const phaseId = kind === 'phase' ? id : (taskById.get(id)?.phase_id ?? null)
+
+    const parentTaskId = kind === 'task' ? id : null
+    const parent = parentTaskId ? taskById.get(parentTaskId) : null
+    const phaseId = kind === 'phase' ? id : (parent?.phase_id ?? null)
+
+    // Fratrie : les sous-tâches d'un même parent, ou les tâches de premier
+    // niveau d'une même phase.
+    const fratrie = parentTaskId
+      ? localTasks.filter((t) => t.parent_task_id === parentTaskId && t.date_fin)
+      : localTasks.filter((t) => t.phase_id === phaseId && !t.parent_task_id && t.date_fin)
+    const dernierFin = fratrie.length > 0
+      ? fratrie.reduce((max, t) => (t.date_fin! > max ? t.date_fin! : max), fratrie[0].date_fin!)
+      : null
 
     let debut: string
-    if (phaseId) {
-      const tachesPhase = localTasks.filter((t) => t.phase_id === phaseId && t.date_fin)
-      const dernierFin = tachesPhase.length > 0
-        ? tachesPhase.reduce((max, t) => (t.date_fin! > max ? t.date_fin! : max), tachesPhase[0].date_fin!)
-        : null
-      const phase = localPhases.find((p) => p.id === phaseId)
-      debut = dernierFin ? addDays(dernierFin, 1) : (phase?.date_debut ?? toLocalISO(new Date()))
+    if (dernierFin) {
+      debut = addDays(dernierFin, 1)
+    } else if (parent?.date_debut) {
+      debut = parent.date_debut
     } else {
-      debut = toLocalISO(new Date())
+      const phase = phaseId ? localPhases.find((p) => p.id === phaseId) : null
+      debut = phase?.date_debut ?? toLocalISO(new Date())
     }
     const fin = addDays(debut, 1)
 
     const supabase = createClient()
     const { error } = await supabase.from('project_tasks').insert({
       project_id: projectId,
-      titre: 'Nouvelle tâche',
+      titre: parentTaskId ? 'Nouvelle sous-tâche' : 'Nouvelle tâche',
       phase_id: phaseId,
+      parent_task_id: parentTaskId,
       date_debut: debut,
       date_fin: fin,
       ordre: localTasks.length,
