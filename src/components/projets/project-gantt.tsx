@@ -15,7 +15,7 @@
  *   + rollback et toast d'erreur.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import type { Task as GanttTask } from 'gantt-task-react'
@@ -119,10 +119,6 @@ export function ProjectGantt({
 
   // Colonnes de la liste (Tâche / Début / Fin) redimensionnables par glisser
   const { widths: colWidths, startResize } = useResizableColumns()
-  const { Header: TaskListHeader, Table: TaskListTable } = useMemo(
-    () => createTaskListComponents(colWidths, startResize),
-    [colWidths, startResize]
-  )
 
   // Phases repliées (le triangle ▶/▼ de la liste replie/déplie leurs tâches)
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set())
@@ -279,6 +275,34 @@ export function ProjectGantt({
   // par id pour afficher statut et responsable en français.
   const taskById = useMemo(() => new Map(localTasks.map((t) => [t.id, t])), [localTasks])
   const milestoneById = useMemo(() => new Map(localMilestones.map((m) => [m.id, m])), [localMilestones])
+
+  // Titre RÉEL d'une ligne du Gantt (par opposition à son nom décoré affiché,
+  // ex. "[XX] Titre" pour un responsable, "⚠ Titre" en cas de conflit) —
+  // utilisé pour l'édition directe du titre dans la liste de gauche.
+  const titreReel = useCallback((ganttId: string) => {
+    const m = ganttId.match(/^(phase|task|ms)_(.+)$/)
+    if (!m) return ''
+    const [, kind, id] = m
+    if (kind === 'phase') return localPhases.find((p) => p.id === id)?.titre ?? ''
+    if (kind === 'task') return taskById.get(id)?.titre ?? ''
+    return milestoneById.get(id)?.titre ?? ''
+  }, [localPhases, taskById, milestoneById])
+
+  const handleRename = useCallback(async (ganttId: string, nouveauTitre: string) => {
+    const m = ganttId.match(/^(phase|task|ms)_(.+)$/)
+    if (!m) return
+    const [, kind, id] = m
+    const table = kind === 'phase' ? 'project_phases' : kind === 'task' ? 'project_tasks' : 'project_milestones'
+    const supabase = createClient()
+    const { error } = await supabase.from(table).update({ titre: nouveauTitre }).eq('id', id)
+    if (error) toast.error(`Échec du renommage : ${error.message}`)
+    else router.refresh()
+  }, [router])
+
+  const { Header: TaskListHeader, Table: TaskListTable } = useMemo(
+    () => createTaskListComponents(colWidths, startResize, titreReel, handleRename),
+    [colWidths, startResize, titreReel, handleRename]
+  )
 
   const TooltipContent = useMemo(() => {
     const Comp: React.FC<{ task: GanttTask; fontSize: string; fontFamily: string }> = ({ task, fontSize, fontFamily }) => {

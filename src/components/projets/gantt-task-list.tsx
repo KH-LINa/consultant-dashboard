@@ -89,10 +89,16 @@ function fmtDate(d: Date): string {
 /**
  * Fabrique les deux composants attendus par <Gantt TaskListHeader TaskListTable>,
  * liés aux largeurs courantes et au démarrage du drag.
+ *
+ * titreReel/onRename : t.name porte le libellé DÉCORÉ affiché dans le Gantt
+ * ([initiales] responsable, ⚠ conflit…) — titreReel restitue le titre réel
+ * (phase/tâche/jalon) à éditer, onRename persiste le renommage en base.
  */
 export function createTaskListComponents(
   widths: ColWidths,
-  startResize: (col: keyof ColWidths, e: React.MouseEvent) => void
+  startResize: (col: keyof ColWidths, e: React.MouseEvent) => void,
+  titreReel: (ganttId: string) => string,
+  onRename: (ganttId: string, nouveauTitre: string) => void
 ) {
   const Header: React.FC<{ headerHeight: number; fontFamily: string; fontSize: string }> =
     ({ headerHeight, fontFamily, fontSize }) => (
@@ -130,9 +136,18 @@ export function createTaskListComponents(
               <span className="w-4 shrink-0" />
             ) : null}
             {t.type === 'milestone' && <span className="shrink-0 text-amber-500 text-[10px]">◆</span>}
-            <span className={`truncate ${t.type === 'project' ? 'font-semibold text-gray-800' : 'text-gray-700'}`} title={t.name}>
-              {t.name}
-            </span>
+            <input
+              key={`ti-${t.id}-${titreReel(t.id)}`}
+              defaultValue={titreReel(t.id)}
+              title={t.name}
+              onBlur={(e) => {
+                const v = e.target.value.trim()
+                if (v && v !== titreReel(t.id)) onRename(t.id, v)
+                else e.target.value = titreReel(t.id)
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+              className={`w-full truncate bg-transparent border-0 outline-none rounded px-0.5 -mx-0.5 focus:ring-1 focus:ring-[#534AB7] ${t.type === 'project' ? 'font-semibold text-gray-800' : 'text-gray-700'}`}
+            />
           </div>
           <div style={{ width: widths.from, minWidth: widths.from }} className="px-3 truncate text-gray-500">
             {fmtDate(t.start)}

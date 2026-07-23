@@ -26,16 +26,23 @@ function addDays(iso: string, days: number): string {
   return toLocalISO(d)
 }
 
+// Durée par défaut quand la quantité ne représente probablement pas un
+// nombre de jours (voir buildPhasesFromLignes) : suffisamment courte pour
+// rester un premier jet, assez longue pour ne pas produire une phase d'un
+// seul jour à chaque ligne facturée au forfait.
+const DUREE_PAR_DEFAUT_JOURS = 3
+
 // Une phase par ligne de devis, enchaînées à partir d'aujourd'hui. La
-// quantité sert d'estimation de durée en jours — correcte pour les lignes
-// facturées à la journée, approximative pour les lignes forfaitaires (licence,
-// déplacement…) qui n'ont pas d'unité explicite en base ; durée bornée entre
-// 1 et 20 jours pour éviter un planning aberrant. Premier jet à ajuster
-// manuellement dans le Gantt.
+// quantité sert d'estimation de durée en jours UNIQUEMENT à partir de 2 —
+// une quantité de 1 est le cas le plus fréquent pour une ligne forfaitaire
+// (déplacement, rapport, licence…) où "1" veut dire "une unité", pas "un
+// jour" : l'utiliser telle quelle produirait une phase d'un seul jour à
+// chaque fois. Durée bornée à 20 jours pour éviter un planning aberrant sur
+// les grandes quantités. Premier jet à ajuster manuellement dans le Gantt.
 function buildPhasesFromLignes(projectId: string, lignes: QuoteLine[]) {
   let debut = toLocalISO(new Date())
   return lignes.map((l, i) => {
-    const dureeJours = Math.min(20, Math.max(1, Math.round(l.quantite) || 1))
+    const dureeJours = l.quantite >= 2 ? Math.min(20, Math.round(l.quantite)) : DUREE_PAR_DEFAUT_JOURS
     const fin = addDays(debut, dureeJours - 1)
     const phase = {
       project_id: projectId,
