@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Task } from 'gantt-task-react'
-import { Plus, Scissors } from 'lucide-react'
+import { Plus, Scissors, Trash2 } from 'lucide-react'
 import { joursOuvresEntre } from '@/lib/jours-ouvres'
 import { toLocalISO } from '@/lib/gantt-deps'
 
@@ -108,6 +108,7 @@ function fmtDuree(t: Task, feries: Set<string>): string {
  * onAddTask : ajoute une tâche rattachée à la phase de la ligne cliquée
  * (ou à la même phase qu'une tâche cliquée) — pas de bouton sur les jalons.
  * onSplit : fractionne une tâche-feuille en deux segments de travail (ciseaux).
+ * onDelete : supprime une tâche ou sous-tâche (et sa descendance en cascade).
  * wbs : numéro hiérarchique de la ligne (1, 1.1, 1.1.1…), vide si non numérotée.
  */
 export function createTaskListComponents(
@@ -117,6 +118,7 @@ export function createTaskListComponents(
   onRename: (ganttId: string, nouveauTitre: string) => void,
   onAddTask: (ganttId: string) => void,
   onSplit: (ganttId: string) => void,
+  onDelete: (ganttId: string) => void,
   wbs: (ganttId: string) => string,
   feries: Set<string>
 ) {
@@ -203,6 +205,19 @@ export function createTaskListComponents(
                 className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-[#534AB7] opacity-0 group-hover:opacity-100"
               >
                 <Plus className="h-3 w-3" />
+              </button>
+            )}
+            {/* Supprimer : tâches et sous-tâches uniquement (les phases et
+                jalons se suppriment depuis leurs panneaux dédiés) */}
+            {t.id.startsWith('task_') && (
+              <button
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                onClick={() => onDelete(t.id)}
+                title="Supprimer cette tâche (et ses sous-tâches)"
+                className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-red-500 opacity-0 group-hover:opacity-100"
+              >
+                <Trash2 className="h-3 w-3" />
               </button>
             )}
           </div>

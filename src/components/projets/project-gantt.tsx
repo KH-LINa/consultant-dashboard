@@ -536,6 +536,30 @@ export function ProjectGantt({
     router.refresh()
   }, [taskById, localTasks, projectId, router, feries])
 
+  // Supprime une tâche ou sous-tâche directement depuis le Gantt. La cascade
+  // (sous-tâches) est gérée côté DB (parent_task_id ON DELETE CASCADE) ; on
+  // retire aussi toute la descendance de l'état local pour un rendu immédiat.
+  const handleSupprimerTache = useCallback(async (ganttId: string) => {
+    const id = ganttId.replace('task_', '')
+    if (!taskById.has(id)) return
+
+    function idsASupprimer(parentId: string): string[] {
+      const enfants = localTasks.filter((c) => c.parent_task_id === parentId)
+      return [parentId, ...enfants.flatMap((c) => idsASupprimer(c.id))]
+    }
+    const aSupprimer = new Set(idsASupprimer(id))
+
+    const prev = localTasks
+    setLocalTasks((ts) => ts.filter((x) => !aSupprimer.has(x.id)))
+    const supabase = createClient()
+    const { error } = await supabase.from('project_tasks').delete().eq('id', id)
+    if (error) { setLocalTasks(prev); toast.error(`Échec de la suppression : ${error.message}`); return }
+    toast.success(aSupprimer.size > 1
+      ? `Tâche supprimée avec ${aSupprimer.size - 1} sous-tâche${aSupprimer.size > 2 ? 's' : ''}`
+      : 'Tâche supprimée')
+    router.refresh()
+  }, [taskById, localTasks, router])
+
   const wbsDe = useCallback((ganttId: string) => wbsById.get(ganttId) ?? '', [wbsById])
 
   // Largeur de colonne du Gantt (partagée entre la prop columnWidth et le
@@ -567,8 +591,8 @@ export function ProjectGantt({
   }, [viewMode, ganttTasks, columnWidth, feries])
 
   const { Header: TaskListHeader, Table: TaskListTable } = useMemo(
-    () => createTaskListComponents(colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, wbsDe, feries),
-    [colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, wbsDe, feries]
+    () => createTaskListComponents(colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, handleSupprimerTache, wbsDe, feries),
+    [colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, handleSupprimerTache, wbsDe, feries]
   )
 
   const TooltipContent = useMemo(() => {
