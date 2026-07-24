@@ -724,6 +724,9 @@ export function ProjectGantt({
     // (chaque semaine ou chaque mois), recalées sur des jours ouvrés — chacune
     // se comporte ensuite comme une tâche normale (drag, dépendances, coût…).
     const n = newRecurrence === 'none' ? 1 : Math.max(1, Math.min(52, parseInt(newOccurrences) || 1))
+    // serie_id commun à toutes les occurrences : permet de les gérer comme un
+    // groupe (suppression de toute la série) sans dupliquer la logique de tâche.
+    const serieId = n > 1 ? crypto.randomUUID() : null
     const dureeCalendaire = diffDays(newDebut, newFin)
     const lignes = []
     for (let i = 0; i < n; i++) {
@@ -742,6 +745,7 @@ export function ProjectGantt({
         date_debut: debut,
         date_fin: fin < debut ? debut : fin,
         ordre: localTasks.length + i,
+        serie_id: serieId,
       })
     }
 

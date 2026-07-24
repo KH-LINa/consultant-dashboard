@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Plus, Trash2, ListChecks } from 'lucide-react'
+import { Plus, Trash2, ListChecks, Repeat } from 'lucide-react'
 import { toast } from 'sonner'
 
 const statutLabel: Record<ProjectTaskStatus, string> = {
@@ -72,6 +72,18 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs }: Tasks
     if (error) toast.error(error.message); else { toast.success('Tâche supprimée'); router.refresh() }
   }
 
+  // Nombre d'occurrences par série (tâches récurrentes créées ensemble depuis le Gantt)
+  const tailleSerie = tasks.reduce((m, t) => {
+    if (t.serie_id) m.set(t.serie_id, (m.get(t.serie_id) ?? 0) + 1)
+    return m
+  }, new Map<string, number>())
+
+  async function removeSerie(serieId: string) {
+    const { error } = await supabase.from('project_tasks').delete().eq('serie_id', serieId)
+    if (error) toast.error(error.message)
+    else { toast.success('Série supprimée (toutes les occurrences)'); router.refresh() }
+  }
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -91,7 +103,16 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs }: Tasks
                 <span className={`text-xs px-2 py-1 rounded-full ${statutStyle[t.statut]}`}>
                   {statutLabel[t.statut]}
                 </span>
+                {t.serie_id && (
+                  <Button variant="ghost" size="sm" onClick={() => removeSerie(t.serie_id!)}
+                    title={`Supprimer toute la série (${tailleSerie.get(t.serie_id)} occurrences)`}
+                    className="h-8 px-2 gap-1 text-xs text-gray-500 hover:text-red-600 opacity-0 group-hover:opacity-100">
+                    <Repeat className="h-3.5 w-3.5" />
+                    Série ({tailleSerie.get(t.serie_id)})
+                  </Button>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => remove(t.id)}
+                  title="Supprimer uniquement cette occurrence"
                   className="h-8 w-8 p-0 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100">
                   <Trash2 className="h-4 w-4" />
                 </Button>

@@ -95,6 +95,8 @@ export interface ProjectTask {
   avancement: number
   ordre: number
   created_at: string
+  // Regroupe les occurrences d'une tâche récurrente (même série) ; null = tâche isolée.
+  serie_id: string | null
 }
 
 export type ResourceType = 'humain' | 'materiel'
