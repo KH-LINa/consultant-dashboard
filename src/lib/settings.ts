@@ -13,6 +13,7 @@ export interface ConsultantSettings {
   versement_liberatoire: string
   taux_versement_ir: string
   relances_auto: string
+  surveillance_planning_auto: string
 }
 
 const DEFAULTS: ConsultantSettings = {
@@ -28,6 +29,7 @@ const DEFAULTS: ConsultantSettings = {
   versement_liberatoire: 'false',
   taux_versement_ir: '2.2',
   relances_auto: 'true',
+  surveillance_planning_auto: 'true',
 }
 
 export async function getSettings(): Promise<ConsultantSettings> {

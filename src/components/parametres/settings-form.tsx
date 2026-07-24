@@ -224,6 +224,38 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
         </CardContent>
       </Card>
 
+      {/* Surveillance des plannings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Bell className="h-4 w-4 text-amber-500" />
+            Surveillance des plannings
+          </CardTitle>
+          <CardDescription>
+            Email quotidien récapitulant, pour tous les projets actifs : tâches et jalons en retard,
+            conflits de dépendances et échéances des 3 prochains jours (envoyé uniquement s'il y a
+            quelque chose à signaler)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="surveillance_planning_auto"
+              checked={form.surveillance_planning_auto === 'true'}
+              onChange={(e) => set('surveillance_planning_auto', e.target.checked ? 'true' : 'false')}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            <Label htmlFor="surveillance_planning_auto" className="cursor-pointer">
+              Activer la surveillance automatique des plannings
+            </Label>
+          </div>
+          <p className="text-xs text-gray-400 mt-2">
+            Envoyé à l&apos;adresse de notification ci-dessus (ou à défaut l&apos;email professionnel).
+          </p>
+        </CardContent>
+      </Card>
+
       <Separator />
 
       <div className="flex items-center gap-4">
