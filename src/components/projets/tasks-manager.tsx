@@ -122,7 +122,11 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs }: Tasks
                 <div className="col-span-3">
                   <Select value={t.phase_id ?? NONE}
                     onValueChange={(v) => update(t.id, 'phase_id', v === NONE ? null : v)}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Phase" /></SelectTrigger>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue>
+                        {(v: string) => (v === NONE ? '— Aucune phase —' : phaseById[v]?.titre ?? 'Phase')}
+                      </SelectValue>
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={NONE}>— Aucune phase —</SelectItem>
                       {phases.map((p) => <SelectItem key={p.id} value={p.id}>{p.titre}</SelectItem>)}
@@ -134,7 +138,9 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs }: Tasks
                   <Select value={t.responsable_id ?? NONE}
                     onValueChange={(v) => update(t.id, 'responsable_id', v === NONE ? null : v)}>
                     <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Responsable" />
+                      <SelectValue>
+                        {(v: string) => (v === NONE ? '— Non assigné —' : collabById[v]?.nom ?? 'Responsable')}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={NONE}>— Non assigné —</SelectItem>
@@ -151,7 +157,11 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs }: Tasks
                 <div className="col-span-2">
                   <Select value={t.statut}
                     onValueChange={(v) => updateStatut(t.id, v as ProjectTaskStatus, t.avancement)}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue>
+                        {(v: string) => statutLabel[v as ProjectTaskStatus] ?? v}
+                      </SelectValue>
+                    </SelectTrigger>
                     <SelectContent>
                       {(Object.keys(statutLabel) as ProjectTaskStatus[]).map((s) => (
                         <SelectItem key={s} value={s}>{statutLabel[s]}</SelectItem>

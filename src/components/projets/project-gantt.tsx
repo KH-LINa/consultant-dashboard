@@ -1059,7 +1059,11 @@ export function ProjectGantt({
           <div className="w-40">
             <label className="text-xs text-gray-500">Phase</label>
             <Select value={newPhase} onValueChange={(v) => setNewPhase(v ?? NONE)}>
-              <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="— Aucune —" /></SelectTrigger>
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue placeholder="— Aucune —">
+                  {(v: string) => (v === NONE ? '— Aucune phase —' : localPhases.find((p) => p.id === v)?.titre ?? '— Aucune —')}
+                </SelectValue>
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>— Aucune phase —</SelectItem>
                 {localPhases.map((p) => <SelectItem key={p.id} value={p.id}>{p.titre}</SelectItem>)}

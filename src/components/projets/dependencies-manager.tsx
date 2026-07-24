@@ -181,7 +181,9 @@ export function DependenciesManager({ projectId, tasks, dependencies }: Dependen
             <label className="text-xs text-gray-500">D'abord (prérequis)</label>
             <Select value={pred} onValueChange={(v) => setPred(v ?? NONE_TASK)}>
               <SelectTrigger className="h-9">
-                <SelectValue placeholder="Tâche prérequise" />
+                <SelectValue placeholder="Tâche prérequise">
+                  {(v: string) => (v === NONE_TASK ? '— Tâche prérequise —' : titreById[v] ?? 'Tâche prérequise')}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE_TASK}>— Tâche prérequise —</SelectItem>
@@ -194,7 +196,9 @@ export function DependenciesManager({ projectId, tasks, dependencies }: Dependen
             <label className="text-xs text-gray-500">Ensuite (dépend de)</label>
             <Select value={succ} onValueChange={(v) => setSucc(v ?? NONE_TASK)}>
               <SelectTrigger className="h-9">
-                <SelectValue placeholder="Tâche suivante" />
+                <SelectValue placeholder="Tâche suivante">
+                  {(v: string) => (v === NONE_TASK ? '— Tâche suivante —' : titreById[v] ?? 'Tâche suivante')}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE_TASK}>— Tâche suivante —</SelectItem>

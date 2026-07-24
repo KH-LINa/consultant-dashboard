@@ -63,7 +63,9 @@ export function MilestonesManager({ projectId, milestones }: { projectId: string
               onChange={(e) => update(m.id, 'date_echeance', e.target.value || null)} />
             <div className="col-span-3">
               <Select value={m.statut} onValueChange={(v) => update(m.id, 'statut', v)}>
-                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-9">
+                  <SelectValue>{(v: string) => statutLabel[v as MilestoneStatus] ?? v}</SelectValue>
+                </SelectTrigger>
                 <SelectContent>
                   {(Object.keys(statutLabel) as MilestoneStatus[]).map((s) => (
                     <SelectItem key={s} value={s}>{statutLabel[s]}</SelectItem>
