@@ -17,9 +17,12 @@ interface SendEmailDialogProps {
   id: string
   titre: string
   contactEmail?: string | null
+  // Statut déjà sorti de "brouillon" = envoyé au moins une fois (le statut
+  // n'avance que sur un envoi Resend réussi — voir /api/send-email).
+  dejaEnvoye?: boolean
 }
 
-export function SendEmailDialog({ type, id, titre, contactEmail }: SendEmailDialogProps) {
+export function SendEmailDialog({ type, id, titre, contactEmail, dejaEnvoye }: SendEmailDialogProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [sending, setSending] = useState(false)
@@ -61,7 +64,9 @@ export function SendEmailDialog({ type, id, titre, contactEmail }: SendEmailDial
         size="sm"
         onClick={() => setOpen(true)}
         className="text-blue-600 hover:text-blue-800"
-        title={`Envoyer par email`}
+        title={dejaEnvoye
+          ? `${type === 'devis' ? 'Devis' : 'Facture'} envoyé${type === 'devis' ? '' : 'e'} — cliquer pour renvoyer`
+          : 'Envoyer par email'}
       >
         <Send className="h-4 w-4" />
       </Button>

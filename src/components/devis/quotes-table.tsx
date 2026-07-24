@@ -128,6 +128,7 @@ export function QuotesTable({ quotes }: { quotes: (Quote & { contact?: { nom: st
                       id={quote.id}
                       titre={quote.titre}
                       contactEmail={(quote as any).contact?.email}
+                      dejaEnvoye={quote.statut !== 'brouillon'}
                     />
                     {quote.statut !== 'signé' && quote.statut !== 'refusé' && (
                       <Button
