@@ -1,19 +1,23 @@
 import { describe, it, expect } from 'vitest'
 import {
-  wouldCreateCycle, findDependencyConflicts, computeCriticalPath,
+  wouldCreateCycle, findDependencyConflicts, computeCriticalPath, projectCompletionRate,
 } from './gantt-deps'
 import { feriesSet } from './jours-ouvres'
-import type { ProjectTask, TaskDependency, DependencyType } from './types'
+import type { ProjectTask, ProjectPhase, TaskDependency, DependencyType } from './types'
 
 const feries = feriesSet(2026, 2026)
 
 // Fabrique une tâche datée minimale
-function tache(id: string, debut: string, fin: string): ProjectTask {
+function tache(id: string, debut: string, fin: string, phaseId: string | null = null, avancement = 0): ProjectTask {
   return {
-    id, project_id: 'p', phase_id: null, parent_task_id: null, responsable_id: null,
-    titre: id, date_debut: debut, date_fin: fin, statut: 'a_faire', avancement: 0,
-    ordre: 0, created_at: '', completed_at: null,
+    id, project_id: 'p', phase_id: phaseId, parent_task_id: null, responsable_id: null,
+    titre: id, date_debut: debut, date_fin: fin, statut: 'a_faire', avancement,
+    ordre: 0, created_at: '', serie_id: null,
   }
+}
+
+function phase(id: string, debut: string, fin: string): ProjectPhase {
+  return { id, project_id: 'p', titre: id, date_debut: debut, date_fin: fin, couleur: '#000', ordre: 0, created_at: '' }
 }
 
 function dep(pred: string, succ: string, type: DependencyType = 'FS', lag = 0): TaskDependency {
@@ -114,5 +118,42 @@ describe('computeCriticalPath (typé)', () => {
     expect(critiques.has('a')).toBe(true)  // racine
     expect(critiques.has('c')).toBe(true)  // chemin le plus long
     expect(critiques.has('b')).toBe(false) // marge
+  })
+})
+
+describe('projectCompletionRate', () => {
+  it('une phase sans aucune tâche compte pour 0 % sur toute sa durée (ne doit pas être ignorée)', () => {
+    // Phase 1 (8 j) : 2 tâches terminées à 100 %. Phase 2 (12 j) : aucune
+    // tâche créée — doit tirer la moyenne vers le bas, pas être invisible.
+    const phases = [phase('ph1', '2026-07-01', '2026-07-08'), phase('ph2', '2026-07-09', '2026-07-20')]
+    const tasks = [
+      tache('t1', '2026-07-01', '2026-07-04', 'ph1', 100),
+      tache('t2', '2026-07-05', '2026-07-08', 'ph1', 100),
+    ]
+    const taux = projectCompletionRate(tasks, phases)
+    // Naïvement (moyenne des 2 tâches) on obtiendrait 100 % ; pondéré par la
+    // durée des phases (8 j à 100 %, 12 j à 0 % sur 20 j au total) → 40 %.
+    expect(taux).toBe(40)
+  })
+
+  it('toutes les phases à 100 % → 100 %', () => {
+    const phases = [phase('ph1', '2026-07-01', '2026-07-05')]
+    const tasks = [tache('t1', '2026-07-01', '2026-07-05', 'ph1', 100)]
+    expect(projectCompletionRate(tasks, phases)).toBe(100)
+  })
+
+  it('sans aucune phase, retombe sur la moyenne pondérée des tâches', () => {
+    const tasks = [tache('t1', '2026-07-01', '2026-07-02', null, 100), tache('t2', '2026-07-03', '2026-07-04', null, 0)]
+    expect(projectCompletionRate(tasks, [])).toBe(50)
+  })
+
+  it('tâche hors phase comptée individuellement, pondérée par sa propre durée', () => {
+    const phases = [phase('ph1', '2026-07-01', '2026-07-02')] // 2 j, 1 tâche à 100 %
+    const tasks = [
+      tache('t1', '2026-07-01', '2026-07-02', 'ph1', 100),
+      tache('t2', '2026-07-03', '2026-07-12', null, 0), // 10 j hors phase, 0 %
+    ]
+    // Poids : 2 j (phase à 100 %) + 10 j (tâche hors phase à 0 %) = 12 j → 200/12 ≈ 17 %
+    expect(projectCompletionRate(tasks, phases)).toBe(17)
   })
 })

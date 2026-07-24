@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { FolderKanban, FileText } from 'lucide-react'
 import type { ProjectStatus } from '@/lib/types'
+import { projectCompletionRate } from '@/lib/gantt-deps'
 
 const statutLabel: Record<ProjectStatus, { label: string; cls: string }> = {
   a_demarrer: { label: 'À démarrer', cls: 'bg-gray-100 text-gray-600' },
@@ -64,13 +65,16 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
 
   const st = statutLabel[project.statut as ProjectStatus]
 
-  // Avancement global = moyenne de l'avancement des tâches
+  // Avancement global = pondéré par phase (une phase sans tâche compte pour
+  // 0 % sur toute sa durée, au lieu d'être ignorée du calcul — voir
+  // projectCompletionRate) plutôt qu'une simple moyenne des tâches, qui
+  // affichait 100 % dès que les seules tâches renseignées étaient terminées
+  // même si les phases suivantes (souvent les plus longues) n'avaient
+  // encore aucune tâche créée.
   const tasksList = tasks ?? []
   const phasesList = phases ?? []
   const milestonesList = milestones ?? []
-  const avancement = tasksList.length > 0
-    ? Math.round(tasksList.reduce((s, t) => s + (t.avancement || 0), 0) / tasksList.length)
-    : 0
+  const avancement = projectCompletionRate(tasksList, phasesList)
 
   // Fenêtre de dates du projet, calculée depuis le planning réel
   // (phases + jalons + tâches + dates propres du projet)
@@ -120,7 +124,9 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
             <div className="h-2.5 rounded-full bg-blue-500 transition-all" style={{ width: `${avancement}%` }} />
           </div>
           <p className="text-xs text-gray-400 mt-2">
-            Moyenne de l'avancement des {tasksList.length} tâche(s).
+            {phasesList.length > 0
+              ? `Pondéré par phase (${phasesList.length} phase(s), ${tasksList.length} tâche(s)) — une phase sans tâche compte pour 0 %.`
+              : `Moyenne de l'avancement des ${tasksList.length} tâche(s).`}
           </p>
           {(projetDateDebut || projetDateFin) && (
             <p className="text-xs text-gray-500 mt-2 pt-2 border-t">

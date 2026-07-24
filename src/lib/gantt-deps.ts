@@ -1,4 +1,4 @@
-import type { ProjectTask, TaskDependency, DependencyType } from '@/lib/types'
+import type { ProjectTask, ProjectPhase, TaskDependency, DependencyType } from '@/lib/types'
 import { addJoursOuvres, joursOuvresEntre } from '@/lib/jours-ouvres'
 
 /**
@@ -280,6 +280,37 @@ export function completionRate(tasks: ProjectTask[], phaseId?: string): number {
   let poids = 0
   let somme = 0
   for (const t of scope) {
+    const w = t.date_debut && t.date_fin
+      ? Math.max(1, diffDays(t.date_debut, t.date_fin) + 1)
+      : 1
+    poids += w
+    somme += w * (t.avancement ?? 0)
+  }
+  return poids === 0 ? 0 : Math.round(somme / poids)
+}
+
+/**
+ * Avancement global du projet (0–100), pondéré par PHASE plutôt que par
+ * simple moyenne des tâches : une phase sans aucune tâche renseignée compte
+ * pour 0 % sur toute sa durée, au lieu d'être invisible du calcul. Sans quoi
+ * un projet peut afficher 100 % alors que seules quelques tâches d'une
+ * phase précoce sont terminées et que les phases suivantes (souvent les
+ * plus longues) n'ont encore aucune tâche créée.
+ * Les tâches sans phase sont comptées individuellement (poids = leur durée).
+ */
+export function projectCompletionRate(tasks: ProjectTask[], phases: ProjectPhase[]): number {
+  if (phases.length === 0) return completionRate(tasks)
+
+  let poids = 0
+  let somme = 0
+  for (const p of phases) {
+    const w = p.date_debut && p.date_fin
+      ? Math.max(1, diffDays(p.date_debut, p.date_fin) + 1)
+      : 1
+    poids += w
+    somme += w * completionRate(tasks, p.id)
+  }
+  for (const t of tasks.filter((t) => !t.phase_id)) {
     const w = t.date_debut && t.date_fin
       ? Math.max(1, diffDays(t.date_debut, t.date_fin) + 1)
       : 1
