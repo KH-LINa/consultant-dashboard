@@ -137,6 +137,17 @@ export interface TaskDependency {
   created_at: string
 }
 
+// Même modèle que TaskDependency (type + lag), mais reliant des project_phases
+// entre elles (table phase_dependencies) plutôt que des project_tasks.
+export interface PhaseDependency {
+  id: string
+  predecessor_id: string
+  successor_id: string
+  type: DependencyType
+  lag_days: number
+  created_at: string
+}
+
 export interface DocumentFile {
   id: string
   nom: string

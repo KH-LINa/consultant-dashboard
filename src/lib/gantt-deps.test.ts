@@ -1,17 +1,20 @@
 import { describe, it, expect } from 'vitest'
 import {
-  wouldCreateCycle, findDependencyConflicts, computeCriticalPath, projectCompletionRate,
+  wouldCreateCycle, findDependencyConflicts, computeCriticalPath, projectCompletionRate, phaseStatus,
 } from './gantt-deps'
 import { feriesSet } from './jours-ouvres'
-import type { ProjectTask, ProjectPhase, TaskDependency, DependencyType } from './types'
+import type { ProjectTask, ProjectPhase, ProjectTaskStatus, TaskDependency, DependencyType } from './types'
 
 const feries = feriesSet(2026, 2026)
 
 // Fabrique une tâche datée minimale
-function tache(id: string, debut: string, fin: string, phaseId: string | null = null, avancement = 0): ProjectTask {
+function tache(
+  id: string, debut: string, fin: string, phaseId: string | null = null,
+  avancement = 0, statut: ProjectTaskStatus = 'a_faire'
+): ProjectTask {
   return {
     id, project_id: 'p', phase_id: phaseId, parent_task_id: null, responsable_id: null,
-    titre: id, date_debut: debut, date_fin: fin, statut: 'a_faire', avancement,
+    titre: id, date_debut: debut, date_fin: fin, statut, avancement,
     ordre: 0, created_at: '', serie_id: null,
   }
 }
@@ -155,5 +158,61 @@ describe('projectCompletionRate', () => {
     ]
     // Poids : 2 j (phase à 100 %) + 10 j (tâche hors phase à 0 %) = 12 j → 200/12 ≈ 17 %
     expect(projectCompletionRate(tasks, phases)).toBe(17)
+  })
+})
+
+describe('phaseStatus (auto-calculé, aucun champ modifiable en base)', () => {
+  it('aucune tâche → à faire', () => {
+    expect(phaseStatus([], 'ph1')).toBe('a_faire')
+  })
+
+  it('toutes les tâches à faire, 0 % → à faire', () => {
+    const tasks = [tache('t1', '2026-07-01', '2026-07-02', 'ph1')]
+    expect(phaseStatus(tasks, 'ph1')).toBe('a_faire')
+  })
+
+  it('toutes les tâches faites → fait', () => {
+    const tasks = [
+      tache('t1', '2026-07-01', '2026-07-02', 'ph1', 100, 'fait'),
+      tache('t2', '2026-07-03', '2026-07-04', 'ph1', 100, 'fait'),
+    ]
+    expect(phaseStatus(tasks, 'ph1')).toBe('fait')
+  })
+
+  it('une tâche faite, une non → en cours', () => {
+    const tasks = [
+      tache('t1', '2026-07-01', '2026-07-02', 'ph1', 100, 'fait'),
+      tache('t2', '2026-07-03', '2026-07-04', 'ph1', 0, 'a_faire'),
+    ]
+    expect(phaseStatus(tasks, 'ph1')).toBe('en_cours')
+  })
+
+  it('une tâche bloquée prime sur les autres statuts', () => {
+    const tasks = [
+      tache('t1', '2026-07-01', '2026-07-02', 'ph1', 100, 'fait'),
+      tache('t2', '2026-07-03', '2026-07-04', 'ph1', 0, 'bloque'),
+    ]
+    expect(phaseStatus(tasks, 'ph1')).toBe('bloque')
+  })
+
+  it('ignore les tâches des autres phases', () => {
+    const tasks = [tache('t1', '2026-07-01', '2026-07-02', 'autre-phase', 100, 'fait')]
+    expect(phaseStatus(tasks, 'ph1')).toBe('a_faire')
+  })
+})
+
+describe('findDependencyConflicts appliqué aux PHASES (même logique générique que les tâches)', () => {
+  it('détecte un conflit FD entre deux phases', () => {
+    const phases = [phase('ph1', '2026-07-06', '2026-07-10'), phase('ph2', '2026-07-08', '2026-07-15')]
+    const dep = { id: 'd1', predecessor_id: 'ph1', successor_id: 'ph2', type: 'FS' as DependencyType, lag_days: 0, created_at: '' }
+    const conflicts = findDependencyConflicts(phases, [dep], feries)
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0].suggestedStart).toBe('2026-07-10')
+  })
+
+  it('aucun conflit quand la phase suivante démarre après la fin du prérequis', () => {
+    const phases = [phase('ph1', '2026-07-06', '2026-07-10'), phase('ph2', '2026-07-13', '2026-07-20')]
+    const dep = { id: 'd1', predecessor_id: 'ph1', successor_id: 'ph2', type: 'FS' as DependencyType, lag_days: 0, created_at: '' }
+    expect(findDependencyConflicts(phases, [dep], feries)).toHaveLength(0)
   })
 })

@@ -1,4 +1,4 @@
-import type { ProjectTask, ProjectPhase, TaskDependency, DependencyType } from '@/lib/types'
+import type { ProjectTask, ProjectPhase, TaskDependency, DependencyType, ProjectTaskStatus } from '@/lib/types'
 import { addJoursOuvres, joursOuvresEntre } from '@/lib/jours-ouvres'
 
 /**
@@ -40,11 +40,17 @@ export function wouldCreateCycle(
   return false
 }
 
-export interface DependencyConflict {
-  dep: TaskDependency
-  predecessor: ProjectTask
-  successor: ProjectTask
-  /** Recalage proposé pour la tâche successeur (durée conservée). */
+/** Forme minimale requise pour la détection de conflits : une tâche ET une
+ *  phase satisfont cette forme, ce qui permet de réutiliser les mêmes
+ *  fonctions pour les dépendances entre tâches ET entre phases. */
+type EntiteDatee = { id: string; titre: string; date_debut: string | null; date_fin: string | null }
+type DependanceTypee = { id: string; predecessor_id: string; successor_id: string; type: DependencyType; lag_days: number }
+
+export interface DependencyConflict<E extends EntiteDatee = ProjectTask, D extends DependanceTypee = TaskDependency> {
+  dep: D
+  predecessor: E
+  successor: E
+  /** Recalage proposé pour la tâche (ou phase) successeur (durée conservée). */
   suggestedStart: string
   suggestedEnd: string
 }
@@ -81,9 +87,9 @@ function diffDays(a: string, b: string): number {
  * - SF (début→fin) : le successeur ne finit pas avant le début du prérequis + lag.
  * Le lag est compté en jours ouvrés (fériés France + week-ends exclus).
  */
-function contrainteDep(
+function contrainteDep<E extends EntiteDatee>(
   type: DependencyType,
-  pred: ProjectTask,
+  pred: E,
   feries: Set<string>,
   lag: number
 ): { champ: 'debut' | 'fin'; min: string } | null {
@@ -102,13 +108,13 @@ function contrainteDep(
  * conserve la durée OUVRÉE de la tâche successeur.
  * Ne considère que les dépendances dont les deux tâches ont des dates.
  */
-export function findDependencyConflicts(
-  tasks: ProjectTask[],
-  deps: TaskDependency[],
+export function findDependencyConflicts<E extends EntiteDatee = ProjectTask, D extends DependanceTypee = TaskDependency>(
+  tasks: E[],
+  deps: D[],
   feries: Set<string>
-): DependencyConflict[] {
+): DependencyConflict<E, D>[] {
   const byId = new Map(tasks.map((t) => [t.id, t]))
-  const out: DependencyConflict[] = []
+  const out: DependencyConflict<E, D>[] = []
   for (const dep of deps) {
     const pred = byId.get(dep.predecessor_id)
     const succ = byId.get(dep.successor_id)
@@ -321,13 +327,31 @@ export function projectCompletionRate(tasks: ProjectTask[], phases: ProjectPhase
 }
 
 /**
+ * Statut d'une phase, calculé automatiquement à partir de ses tâches — pas
+ * de champ modifiable en base (une phase n'est qu'une enveloppe, son état
+ * n'a de sens que dérivé de ce qu'elle contient) :
+ * - aucune tâche, ou toutes « à faire » et 0 % d'avancement → à faire
+ * - au moins une tâche bloquée → bloqué
+ * - toutes les tâches sont « fait » → fait
+ * - sinon (au moins une tâche entamée) → en cours
+ */
+export function phaseStatus(tasks: ProjectTask[], phaseId: string): ProjectTaskStatus {
+  const scope = tasks.filter((t) => t.phase_id === phaseId)
+  if (scope.length === 0) return 'a_faire'
+  if (scope.some((t) => t.statut === 'bloque')) return 'bloque'
+  if (scope.every((t) => t.statut === 'fait')) return 'fait'
+  if (scope.some((t) => t.statut !== 'a_faire' || (t.avancement ?? 0) > 0)) return 'en_cours'
+  return 'a_faire'
+}
+
+/**
  * Dépendances non traçables dans le Gantt : au moins une des deux tâches
  * n'a pas de dates (la flèche ne peut pas être dessinée).
  */
-export function findUntrackedDependencies(
-  tasks: ProjectTask[],
-  deps: TaskDependency[]
-): TaskDependency[] {
+export function findUntrackedDependencies<E extends EntiteDatee = ProjectTask, D extends DependanceTypee = TaskDependency>(
+  tasks: E[],
+  deps: D[]
+): D[] {
   const byId = new Map(tasks.map((t) => [t.id, t]))
   return deps.filter((dep) => {
     const pred = byId.get(dep.predecessor_id)

@@ -9,6 +9,7 @@ import { CreateMissionButton } from '@/components/projets/create-mission-button'
 import { ProjectResponsableSelect } from '@/components/projets/project-responsable-select'
 import { ProjectGantt } from '@/components/projets/project-gantt'
 import { DependenciesManager } from '@/components/projets/dependencies-manager'
+import { PhaseDependenciesManager } from '@/components/projets/phase-dependencies-manager'
 import { ProjectPilotage } from '@/components/projets/project-pilotage'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -49,6 +50,14 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
   const taskIds = (tasks ?? []).map((t) => t.id)
   const { data: dependencies } = taskIds.length
     ? await supabase.from('task_dependencies').select('*').in('predecessor_id', taskIds)
+    : { data: [] }
+
+  // Dépendances entre les PHASES de ce projet (distinctes des dépendances
+  // entre tâches ci-dessus — même modèle FD/DD/FF/DF + délai, mais reliant
+  // des project_phases entre elles).
+  const phaseIds = (phases ?? []).map((p) => p.id)
+  const { data: phaseDependencies } = phaseIds.length
+    ? await supabase.from('phase_dependencies').select('*').in('predecessor_id', phaseIds)
     : { data: [] }
 
   // Coût total du projet : affectations de ressources (heures × coût horaire + budget)
@@ -162,7 +171,8 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
       />
 
       <CollaborateursManager collaborateurs={collaborateurs ?? []} />
-      <PhasesManager projectId={project.id} phases={phases ?? []} />
+      <PhasesManager projectId={project.id} phases={phases ?? []} tasks={tasksList} />
+      <PhaseDependenciesManager projectId={project.id} phases={phasesList} dependencies={phaseDependencies ?? []} />
       <MilestonesManager projectId={project.id} milestones={milestones ?? []} />
       <TasksManager
         projectId={project.id}
