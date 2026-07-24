@@ -166,6 +166,7 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
         tasks={tasksList}
         milestones={milestonesList}
         dependencies={dependencies ?? []}
+        phaseDependencies={phaseDependencies ?? []}
         collaborateurs={collaborateurs ?? []}
         coutTotal={coutTotal}
       />

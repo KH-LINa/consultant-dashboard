@@ -22,7 +22,7 @@ import type { Task as GanttTask } from 'gantt-task-react'
 import 'gantt-task-react/dist/index.css'
 import { createClient } from '@/lib/supabase/client'
 import type {
-  ProjectPhase, ProjectMilestone, ProjectTask, TaskDependency, Collaborateur, ProjectTaskStatus,
+  ProjectPhase, ProjectMilestone, ProjectTask, TaskDependency, PhaseDependency, Collaborateur, ProjectTaskStatus,
 } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -85,6 +85,9 @@ interface ProjectGanttProps {
   tasks: ProjectTask[]
   milestones: ProjectMilestone[]
   dependencies: TaskDependency[]
+  // Dépendances entre PHASES (distinctes de `dependencies` ci-dessus, qui
+  // relient des tâches) — dessinées comme des flèches entre les barres phase.
+  phaseDependencies?: PhaseDependency[]
   collaborateurs: Collaborateur[]
   // Coût total du projet (affectations de ressources) — null si aucune
   coutTotal?: number | null
@@ -113,7 +116,7 @@ function initials(nom: string): string {
 }
 
 export function ProjectGantt({
-  projectId, projectTitre, phases, tasks, milestones, dependencies, collaborateurs, coutTotal,
+  projectId, projectTitre, phases, tasks, milestones, dependencies, phaseDependencies = [], collaborateurs, coutTotal,
 }: ProjectGanttProps) {
   const router = useRouter()
   const [viewMode, setViewMode] = useState<VM>('Week')
@@ -261,6 +264,12 @@ export function ProjectGantt({
       // sous-tâches, qui héritent du même phase_id) : sinon un ajout de tâche
       // dépassant la date de fin de la phase laisserait un résumé trop court.
       const [debutPhase, finPhase] = enveloppeDates(p.date_debut!, p.date_fin!, p.id, 'phase')
+      // Flèches de dépendances ENTRE PHASES — même principe que pour les
+      // tâches (buildTaskBar plus bas) : limitées aux prédécesseurs phase
+      // eux-mêmes datés et affichés, sinon la lib ne trouve pas la cible.
+      const phaseDeps = phaseDependencies
+        .filter((d) => d.successor_id === p.id && phaseIdsDates.has(d.predecessor_id))
+        .map((d) => `phase_${d.predecessor_id}`)
       const items: GanttTask[] = [{
         id: `phase_${p.id}`,
         name: p.titre,
@@ -270,6 +279,7 @@ export function ProjectGantt({
         // Progression de la phase = réalisation pondérée de ses tâches
         progress: completionRate(localTasks, p.id),
         hideChildren: collapsedPhases.has(`phase_${p.id}`),
+        dependencies: phaseDeps,
         styles: { backgroundColor: p.couleur, progressColor: shade(p.couleur), backgroundSelectedColor: p.couleur },
       }]
       // tâches de premier niveau de la phase (pas les sous-tâches, imbriquées
@@ -397,7 +407,7 @@ export function ProjectGantt({
         .sort((a, b) => a.date_debut!.localeCompare(b.date_debut!))
       return [bar, ...sousTaches.flatMap((c) => buildTaskEtSousTaches(c, `task_${t.id}`))]
     }
-  }, [localPhases, localTasks, tachesAffichees, localMilestones, dependencies, collabById, conflictTaskIds, showCritical, criticalIds, collapsedPhases, projectTitre, realisation])
+  }, [localPhases, localTasks, tachesAffichees, localMilestones, dependencies, phaseDependencies, collabById, conflictTaskIds, showCritical, criticalIds, collapsedPhases, projectTitre, realisation])
 
   // Numérotation hiérarchique WBS (1, 1.1, 1.1.1…) façon MS Project, déduite
   // de l'ordre d'affichage et du champ project (parent) de chaque ligne.
