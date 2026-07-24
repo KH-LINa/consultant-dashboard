@@ -119,11 +119,11 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs }: Tasks
               </div>
               <div className="grid grid-cols-12 gap-2 items-center">
                 {/* Phase */}
-                <div className="col-span-3">
+                <div className="col-span-3 min-w-0">
                   <Select value={t.phase_id ?? NONE}
                     onValueChange={(v) => update(t.id, 'phase_id', v === NONE ? null : v)}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue>
+                    <SelectTrigger className="h-8 w-full min-w-0 text-xs">
+                      <SelectValue className="truncate min-w-0">
                         {(v: string) => (v === NONE ? '— Aucune phase —' : phaseById[v]?.titre ?? 'Phase')}
                       </SelectValue>
                     </SelectTrigger>
@@ -134,11 +134,11 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs }: Tasks
                   </Select>
                 </div>
                 {/* Responsable */}
-                <div className="col-span-3">
+                <div className="col-span-3 min-w-0">
                   <Select value={t.responsable_id ?? NONE}
                     onValueChange={(v) => update(t.id, 'responsable_id', v === NONE ? null : v)}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue>
+                    <SelectTrigger className="h-8 w-full min-w-0 text-xs">
+                      <SelectValue className="truncate min-w-0">
                         {(v: string) => (v === NONE ? '— Non assigné —' : collabById[v]?.nom ?? 'Responsable')}
                       </SelectValue>
                     </SelectTrigger>
@@ -154,11 +154,11 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs }: Tasks
                 <Input type="date" className="col-span-2 h-8 text-xs" defaultValue={t.date_fin ?? ''}
                   onChange={(e) => update(t.id, 'date_fin', e.target.value || null)} />
                 {/* Statut */}
-                <div className="col-span-2">
+                <div className="col-span-2 min-w-0">
                   <Select value={t.statut}
                     onValueChange={(v) => updateStatut(t.id, v as ProjectTaskStatus, t.avancement)}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue>
+                    <SelectTrigger className="h-8 w-full min-w-0 text-xs">
+                      <SelectValue className="truncate min-w-0">
                         {(v: string) => statutLabel[v as ProjectTaskStatus] ?? v}
                       </SelectValue>
                     </SelectTrigger>
