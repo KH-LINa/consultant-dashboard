@@ -38,7 +38,7 @@ import { GanttTooltip } from '@/components/projets/gantt-tooltip'
 import { PertView } from '@/components/projets/pert-view'
 import { useResizableColumns, createTaskListComponents } from '@/components/projets/gantt-task-list'
 import {
-  findDependencyConflicts, toLocalISO, computeCriticalPath, completionRate,
+  findDependencyConflicts, toLocalISO, computeCriticalPath, completionRate, phaseStatus,
 } from '@/lib/gantt-deps'
 import {
   feriesCourants, prochainJourOuvre, precedentJourOuvre, addJoursOuvres, joursOuvresEntre, estJourOuvre,
@@ -270,6 +270,11 @@ export function ProjectGantt({
       const phaseDeps = phaseDependencies
         .filter((d) => d.successor_id === p.id && phaseIdsDates.has(d.predecessor_id))
         .map((d) => `phase_${d.predecessor_id}`)
+      // Couleur de la barre = statut auto-calculé de la phase (même palette
+      // que les tâches : gris/bleu/vert/rouge), pas la teinte fixe `couleur` —
+      // sinon une phase entièrement terminée (ou automatiquement créée, donc
+      // sans couleur choisie) ne change jamais visuellement dans le Gantt.
+      const couleurPhase = STATUT_COLOR[phaseStatus(localTasks, p.id)]
       const items: GanttTask[] = [{
         id: `phase_${p.id}`,
         name: p.titre,
@@ -280,7 +285,7 @@ export function ProjectGantt({
         progress: completionRate(localTasks, p.id),
         hideChildren: collapsedPhases.has(`phase_${p.id}`),
         dependencies: phaseDeps,
-        styles: { backgroundColor: p.couleur, progressColor: shade(p.couleur), backgroundSelectedColor: p.couleur },
+        styles: { backgroundColor: couleurPhase, progressColor: shade(couleurPhase), backgroundSelectedColor: couleurPhase },
       }]
       // tâches de premier niveau de la phase (pas les sous-tâches, imbriquées
       // via buildTaskEtSousTaches), triées par date de début
