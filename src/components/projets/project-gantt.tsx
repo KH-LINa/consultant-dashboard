@@ -257,11 +257,15 @@ export function ProjectGantt({
     const idsAffiches = new Set(tachesAffichees.map((t) => t.id))
 
     for (const p of phasesAvecDates) {
+      // La barre de la phase doit toujours couvrir ses tâches (et leurs
+      // sous-tâches, qui héritent du même phase_id) : sinon un ajout de tâche
+      // dépassant la date de fin de la phase laisserait un résumé trop court.
+      const [debutPhase, finPhase] = enveloppeDates(p.date_debut!, p.date_fin!, p.id, 'phase')
       const items: GanttTask[] = [{
         id: `phase_${p.id}`,
         name: p.titre,
-        start: toDate(p.date_debut)!,
-        end: toDate(p.date_fin)!,
+        start: debutPhase,
+        end: finPhase,
         type: 'project',
         // Progression de la phase = réalisation pondérée de ses tâches
         progress: completionRate(localTasks, p.id),
@@ -274,7 +278,7 @@ export function ProjectGantt({
         .filter((t) => t.phase_id === p.id && !t.parent_task_id && toDate(t.date_debut) && toDate(t.date_fin))
         .sort((a, b) => a.date_debut!.localeCompare(b.date_debut!))
       for (const t of enfants) items.push(...buildTaskEtSousTaches(t, `phase_${p.id}`))
-      blocks.push({ start: p.date_debut!, prio: 0, items })
+      blocks.push({ start: toISO(debutPhase), prio: 0, items })
     }
 
     // tâches de premier niveau sans phase (ou phase sans dates) → bloc individuel
@@ -327,6 +331,29 @@ export function ProjectGantt({
     }
     return lignes
 
+    // Enveloppe [début, fin] d'une phase (via phase_id, hérité par toute la
+    // descendance) ou d'une tâche parente (via la chaîne parent_task_id) :
+    // ne rétrécit jamais en dessous de ses propres dates, mais s'étend pour
+    // couvrir toute tâche/sous-tâche qui dépasserait — sinon la barre résumé
+    // afficherait une fin antérieure à des tâches qu'elle est censée englober.
+    function tousDescendantsDe(taskId: string): ProjectTask[] {
+      const directs = tachesAffichees.filter((c) => c.parent_task_id === taskId)
+      return directs.flatMap((c) => [c, ...tousDescendantsDe(c.id)])
+    }
+    function enveloppeDates(debutBase: string, finBase: string, id: string, kind: 'phase' | 'task'): [Date, Date] {
+      const membres = (kind === 'phase'
+        ? tachesAffichees.filter((t) => t.phase_id === id)
+        : tousDescendantsDe(id)
+      ).filter((t) => toDate(t.date_debut) && toDate(t.date_fin))
+      let debut = debutBase
+      let fin = finBase
+      for (const t of membres) {
+        if (t.date_debut! < debut) debut = t.date_debut!
+        if (t.date_fin! > fin) fin = t.date_fin!
+      }
+      return [toDate(debut)!, toDate(fin)!]
+    }
+
     function buildTaskBar(t: ProjectTask, project: string | undefined): GanttTask {
       const resp = t.responsable_id ? collabById[t.responsable_id] : null
       // Mode chemin critique : critiques en rouge, le reste estompé
@@ -339,13 +366,17 @@ export function ProjectGantt({
         .filter((d) => d.successor_id === t.id && idsAffiches.has(d.predecessor_id))
         .map((d) => `task_${d.predecessor_id}`)
       const baseName = resp ? `[${initials(resp.nom)}] ${t.titre}` : t.titre
+      const aDesEnfants = aDesSousTaches.has(t.id)
+      const [debut, fin] = aDesEnfants
+        ? enveloppeDates(t.date_debut!, t.date_fin!, t.id, 'task')
+        : [toDate(t.date_debut)!, toDate(t.date_fin)!]
       return {
         id: `task_${t.id}`,
         name: conflictTaskIds.has(t.id) ? `⚠ ${baseName}` : baseName,
-        start: toDate(t.date_debut)!,
-        end: toDate(t.date_fin)!,
-        type: aDesSousTaches.has(t.id) ? 'project' : 'task',
-        hideChildren: aDesSousTaches.has(t.id) ? collapsedPhases.has(`task_${t.id}`) : undefined,
+        start: debut,
+        end: fin,
+        type: aDesEnfants ? 'project' : 'task',
+        hideChildren: aDesEnfants ? collapsedPhases.has(`task_${t.id}`) : undefined,
         progress: t.avancement ?? 0,
         project,
         dependencies: deps,
