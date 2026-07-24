@@ -98,6 +98,11 @@ function fmtDuree(t: Task, feries: Set<string>): string {
   return `${jours} j`
 }
 
+/** Convertit une Date en chaîne "YYYY-MM-DD" attendue par un <input type="date">. */
+function toInputDate(d: Date): string {
+  return toLocalISO(d)
+}
+
 /**
  * Fabrique les deux composants attendus par <Gantt TaskListHeader TaskListTable>,
  * liés aux largeurs courantes et au démarrage du drag.
@@ -109,6 +114,9 @@ function fmtDuree(t: Task, feries: Set<string>): string {
  * (ou à la même phase qu'une tâche cliquée) — pas de bouton sur les jalons.
  * onSplit : fractionne une tâche-feuille en deux segments de travail (ciseaux).
  * onDelete : supprime une tâche ou sous-tâche (et sa descendance en cascade).
+ * onEditDate : édition directe des colonnes Début/Fin (équivalent au drag sur
+ * la barre graphique — mêmes règles de recalage en jours ouvrés et de cascade
+ * de dépendances, gérées côté appelant).
  * wbs : numéro hiérarchique de la ligne (1, 1.1, 1.1.1…), vide si non numérotée.
  */
 export function createTaskListComponents(
@@ -119,6 +127,7 @@ export function createTaskListComponents(
   onAddTask: (ganttId: string) => void,
   onSplit: (ganttId: string) => void,
   onDelete: (ganttId: string) => void,
+  onEditDate: (ganttId: string, champ: 'debut' | 'fin', valeur: string) => boolean,
   wbs: (ganttId: string) => string,
   feries: Set<string>
 ) {
@@ -225,11 +234,41 @@ export function createTaskListComponents(
             className="px-3 truncate text-gray-500 tabular-nums">
             {fmtDuree(t, feries)}
           </div>
-          <div style={{ width: widths.from, minWidth: widths.from }} className="px-3 truncate text-gray-500">
-            {fmtDate(t.start)}
+          <div style={{ width: widths.from, minWidth: widths.from }} className="px-1 overflow-hidden">
+            {t.id === 'projet_global' ? (
+              <span className="px-2 truncate text-gray-500 block">{fmtDate(t.start)}</span>
+            ) : (
+              <input
+                type="date"
+                key={`db-${t.id}-${toInputDate(t.start)}`}
+                defaultValue={toInputDate(t.start)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  if (!onEditDate(t.id, 'debut', e.target.value)) e.target.value = toInputDate(t.start)
+                }}
+                className="w-full bg-transparent border border-transparent outline-none rounded px-1.5 py-0.5 text-gray-500 cursor-pointer hover:border-gray-300 focus:border-[#534AB7] focus:ring-1 focus:ring-[#534AB7] focus:bg-white"
+              />
+            )}
           </div>
-          <div style={{ width: widths.to, minWidth: widths.to }} className="px-3 truncate text-gray-500">
-            {fmtDate(t.end)}
+          <div style={{ width: widths.to, minWidth: widths.to }} className="px-1 overflow-hidden">
+            {t.id === 'projet_global' ? (
+              <span className="px-2 truncate text-gray-500 block">{fmtDate(t.end)}</span>
+            ) : (
+              <input
+                type="date"
+                key={`df-${t.id}-${toInputDate(t.end)}`}
+                defaultValue={toInputDate(t.end)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  if (!onEditDate(t.id, 'fin', e.target.value)) e.target.value = toInputDate(t.end)
+                }}
+                className="w-full bg-transparent border border-transparent outline-none rounded px-1.5 py-0.5 text-gray-500 cursor-pointer hover:border-gray-300 focus:border-[#534AB7] focus:ring-1 focus:ring-[#534AB7] focus:bg-white"
+              />
+            )}
           </div>
         </div>
       ))}

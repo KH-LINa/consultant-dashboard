@@ -590,11 +590,6 @@ export function ProjectGantt({
     return `linear-gradient(to right, ${segments.join(', ')})`
   }, [viewMode, ganttTasks, columnWidth, feries])
 
-  const { Header: TaskListHeader, Table: TaskListTable } = useMemo(
-    () => createTaskListComponents(colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, handleSupprimerTache, wbsDe, feries),
-    [colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, handleSupprimerTache, wbsDe, feries]
-  )
-
   const TooltipContent = useMemo(() => {
     const Comp: React.FC<{ task: GanttTask; fontSize: string; fontFamily: string }> = ({ task, fontSize, fontFamily }) => {
       const m = task.id.match(/^(phase|task|ms)_(.+)$/)
@@ -648,12 +643,16 @@ export function ProjectGantt({
   }, [taskById, milestoneById, collabById])
 
   // --- Handlers (optimistic + rollback) ---
-  async function handleDateChange(task: GanttTask) {
-    const m = task.id.match(/^(phase|task|ms)_(.+)$/)
+  // Cœur commun au drag/resize sur la barre graphique (onDateChange du Gantt)
+  // ET à la saisie directe dans les colonnes Début/Fin de la liste de tâches
+  // (handleEditDate ci-dessous) : même recalage en jours ouvrés, même cascade
+  // de dépendances, quelle que soit l'origine du changement de dates.
+  const applyDateChange = useCallback(async (ganttId: string, start: Date, end: Date) => {
+    const m = ganttId.match(/^(phase|task|ms)_(.+)$/)
     if (!m) return
     const [, kind, id] = m
-    let newDebut = toISO(task.start)
-    let newFin = toISO(task.end)
+    let newDebut = toISO(start)
+    let newFin = toISO(end)
 
     if (kind === 'task') {
       const avant = taskById.get(id)
@@ -748,7 +747,56 @@ export function ProjectGantt({
       const res = await updateMilestoneDate(id, newDebut, projectId)
       if (!res.ok) { setLocalMilestones(prev); toast.error('Échec de la mise à jour du jalon') }
     }
-  }
+  }, [taskById, localTasks, localPhases, localMilestones, dependencies, feries, projectId])
+
+  const handleDateChange = useCallback((task: GanttTask) => applyDateChange(task.id, task.start, task.end), [applyDateChange])
+
+  // Édition directe des colonnes Début/Fin de la liste de tâches : on ne
+  // touche qu'un des deux bords, l'autre est repris de l'état courant, puis
+  // on délègue au même cœur que le drag (applyDateChange) — recalage en
+  // jours ouvrés et cascade de dépendances inclus.
+  // Retourne false si l'édition est rejetée (côté client, sans appel réseau) —
+  // le champ de saisie doit alors revenir à sa valeur précédente (voir
+  // gantt-task-list.tsx), au lieu de rester sur la valeur invalide tapée.
+  const handleEditDate = useCallback((ganttId: string, champ: 'debut' | 'fin', valeur: string): boolean => {
+    const m = ganttId.match(/^(phase|task|ms)_(.+)$/)
+    if (!m) return false
+    const [, kind, id] = m
+    const nouvelleDate = toDate(valeur)
+    if (!nouvelleDate) return false
+
+    // Un jalon n'a qu'une seule date réelle (date_echeance) : les deux
+    // colonnes Début/Fin l'affichent et l'éditent toutes les deux.
+    if (kind === 'ms') {
+      applyDateChange(ganttId, nouvelleDate, nouvelleDate)
+      return true
+    }
+
+    let debutActuel: string | null | undefined
+    let finActuel: string | null | undefined
+    if (kind === 'task') {
+      const t = taskById.get(id)
+      debutActuel = t?.date_debut
+      finActuel = t?.date_fin
+    } else {
+      const p = localPhases.find((ph) => ph.id === id)
+      debutActuel = p?.date_debut
+      finActuel = p?.date_fin
+    }
+    if (!debutActuel || !finActuel) return false
+
+    const start = champ === 'debut' ? nouvelleDate : toDate(debutActuel)!
+    const end = champ === 'fin' ? nouvelleDate : toDate(finActuel)!
+    if (end < start) { toast.error('La date de fin doit être après la date de début'); return false }
+
+    applyDateChange(ganttId, start, end)
+    return true
+  }, [taskById, localPhases, applyDateChange])
+
+  const { Header: TaskListHeader, Table: TaskListTable } = useMemo(
+    () => createTaskListComponents(colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, handleSupprimerTache, handleEditDate, wbsDe, feries),
+    [colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, handleSupprimerTache, handleEditDate, wbsDe, feries]
+  )
 
   async function handleProgressChange(task: GanttTask) {
     if (!task.id.startsWith('task_')) return
