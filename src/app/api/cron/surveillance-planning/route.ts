@@ -3,8 +3,14 @@ import { Resend } from 'resend'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { toLocalISO } from '@/lib/gantt-deps'
 import { feriesCourants } from '@/lib/jours-ouvres'
-import { alertesTousProjets, nbAlertes, type AlerteProjet } from '@/lib/surveillance'
-import type { Project, ProjectPhase, ProjectTask, ProjectMilestone, TaskDependency, PhaseDependency } from '@/lib/types'
+import {
+  alertesTousProjets, nbAlertes, conflitsCollaborateurs, conflitsRessourcesModule,
+  type AlerteProjet, type ConflitRessource,
+} from '@/lib/surveillance'
+import type {
+  Project, ProjectPhase, ProjectTask, ProjectMilestone, TaskDependency, PhaseDependency,
+  Collaborateur, Resource, ResourceAssignment,
+} from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,6 +65,23 @@ function renderProjetHtml(a: AlerteProjet, origin: string): string {
   `
 }
 
+function renderConflitsRessourcesHtml(conflits: ConflitRessource[], origin: string): string {
+  if (conflits.length === 0) return ''
+  return `
+    <div style="margin-bottom:28px; padding-bottom:20px; border-bottom:1px solid #e5e7eb;">
+      <h3 style="margin:0 0 10px; font-size:15px; color:#b91c1c;">⚠ Double réservation</h3>
+      <ul style="margin:0; padding-left:20px; font-size:13px; color:#374151;">
+        ${conflits.map((c) => `
+          <li style="margin-bottom:6px;">
+            ${c.type === 'collaborateur' ? 'Collaborateur' : 'Ressource'} <strong>${esc(c.nom)}</strong> affecté(e) en même temps sur :
+            <br/>« ${esc(c.a.itemTitre)} » (<a href="${origin}/projets/${c.a.projetId}" style="color:#534AB7;">${esc(c.a.projetTitre)}</a>, ${fmt(c.a.debut)} → ${fmt(c.a.fin)})
+            <br/>« ${esc(c.b.itemTitre)} » (<a href="${origin}/projets/${c.b.projetId}" style="color:#534AB7;">${esc(c.b.projetTitre)}</a>, ${fmt(c.b.debut)} → ${fmt(c.b.fin)})
+          </li>`).join('')}
+      </ul>
+    </div>
+  `
+}
+
 export async function GET(request: NextRequest) {
   // --- Sécurité : vérifier le secret (même convention que /api/cron/relances) ---
   const auth = request.headers.get('authorization')
@@ -101,30 +124,44 @@ export async function GET(request: NextRequest) {
 
   const taskIds = tasks.map((t) => t.id)
   const phaseIds = phases.map((p) => p.id)
-  const [{ data: taskDepsData }, { data: phaseDepsData }] = await Promise.all([
+  const [
+    { data: taskDepsData }, { data: phaseDepsData },
+    { data: collaborateursData }, { data: resourcesData }, { data: assignmentsData },
+  ] = await Promise.all([
     taskIds.length
       ? supabase.from('task_dependencies').select('*').in('predecessor_id', taskIds)
       : Promise.resolve({ data: [] }),
     phaseIds.length
       ? supabase.from('phase_dependencies').select('*').in('predecessor_id', phaseIds)
       : Promise.resolve({ data: [] }),
+    supabase.from('collaborateurs').select('*'),
+    supabase.from('resources').select('*'),
+    supabase.from('resource_assignments').select('*').in('project_id', projectIds),
   ])
   const taskDeps = (taskDepsData ?? []) as TaskDependency[]
   const phaseDeps = (phaseDepsData ?? []) as PhaseDependency[]
+  const collaborateurs = (collaborateursData ?? []) as Collaborateur[]
+  const resources = (resourcesData ?? []) as Resource[]
+  const assignments = (assignmentsData ?? []) as ResourceAssignment[]
 
   const feries = feriesCourants()
   const auj = toLocalISO(new Date())
   const dans3Jours = toLocalISO(new Date(Date.now() + 3 * 86400000))
 
   const parProjet = alertesTousProjets(projects, tasks, phases, milestones, taskDeps, phaseDeps, auj, dans3Jours, feries)
+  const conflitsRessources = [
+    ...conflitsCollaborateurs(tasks, projects, collaborateurs),
+    ...conflitsRessourcesModule(assignments, tasks, projects, resources),
+  ]
 
-  if (parProjet.length === 0) {
+  if (parProjet.length === 0 && conflitsRessources.length === 0) {
     return NextResponse.json({ success: true, alertes: 0, projets_concernes: 0 })
   }
 
-  const totalAlertes = parProjet.reduce((s, a) => s + nbAlertes(a), 0)
+  const totalAlertes = parProjet.reduce((s, a) => s + nbAlertes(a), 0) + conflitsRessources.length
   const origin = new URL(request.url).origin
-  const sections = parProjet.map((a) => renderProjetHtml(a, origin)).join('')
+  const sections = renderConflitsRessourcesHtml(conflitsRessources, origin)
+    + parProjet.map((a) => renderProjetHtml(a, origin)).join('')
 
   const resend = new Resend(settings.resend_api_key)
   const fromName = settings.consultant_nom || 'i·a·infinity'

@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { alertesProjet, alertesTousProjets, nbAlertes } from './surveillance'
+import {
+  alertesProjet, alertesTousProjets, nbAlertes, conflitsCollaborateurs, conflitsRessourcesModule,
+} from './surveillance'
 import { feriesSet } from './jours-ouvres'
 import type {
   Project, ProjectTask, ProjectPhase, ProjectMilestone, TaskDependency, PhaseDependency,
+  Collaborateur, Resource, ResourceAssignment,
 } from './types'
 
 const feries = feriesSet(2026, 2026)
@@ -30,6 +33,28 @@ function jalon(
 
 function phase(id: string, debut: string, fin: string, projectId = 'p1'): ProjectPhase {
   return { id, project_id: projectId, titre: id, date_debut: debut, date_fin: fin, couleur: '#000', ordre: 0, created_at: '' }
+}
+
+// Tâche avec début/fin distincts et un responsable — pour les tests de chevauchement.
+function tachePeriode(
+  id: string, debut: string, fin: string, projectId = 'p1', responsableId: string | null = null
+): ProjectTask {
+  return {
+    id, project_id: projectId, phase_id: null, parent_task_id: null, responsable_id: responsableId,
+    titre: id, date_debut: debut, date_fin: fin, statut: 'a_faire', avancement: 0, ordre: 0, created_at: '', serie_id: null,
+  }
+}
+
+function collaborateur(id: string, nom: string): Collaborateur {
+  return { id, nom, email: null, role: null, couleur: '#000', created_at: '' }
+}
+
+function resource(id: string, nom: string): Resource {
+  return { id, nom, type: 'humain', cout_horaire: 0, notes: null, created_at: '' }
+}
+
+function affectation(id: string, resourceId: string, projectId: string, taskId: string | null): ResourceAssignment {
+  return { id, resource_id: resourceId, project_id: projectId, task_id: taskId, heures: 0, budget: 0, created_at: '' }
 }
 
 describe('alertesProjet', () => {
@@ -123,5 +148,96 @@ describe('alertesTousProjets', () => {
 
   it('aucun projet actif → tableau vide', () => {
     expect(alertesTousProjets([], [], [], [], [], [], AUJ, DANS3J, feries)).toHaveLength(0)
+  })
+})
+
+describe('conflitsCollaborateurs', () => {
+  it('détecte un même collaborateur sur des tâches qui se chevauchent, sur 2 projets différents', () => {
+    const projects = [projet('p1'), projet('p2')]
+    const collabs = [collaborateur('c1', 'Lina')]
+    const tasks = [
+      tachePeriode('t1', '2026-07-25', '2026-07-28', 'p1', 'c1'),
+      tachePeriode('t2', '2026-07-27', '2026-07-29', 'p2', 'c1'),
+    ]
+    const conflits = conflitsCollaborateurs(tasks, projects, collabs)
+    expect(conflits).toHaveLength(1)
+    expect(conflits[0].nom).toBe('Lina')
+    expect(conflits[0].a.projetTitre).toBe('Projet p1')
+    expect(conflits[0].b.projetTitre).toBe('Projet p2')
+  })
+
+  it('pas de conflit si les périodes ne se chevauchent pas', () => {
+    const projects = [projet('p1'), projet('p2')]
+    const collabs = [collaborateur('c1', 'Lina')]
+    const tasks = [
+      tachePeriode('t1', '2026-07-25', '2026-07-26', 'p1', 'c1'),
+      tachePeriode('t2', '2026-07-27', '2026-07-29', 'p2', 'c1'),
+    ]
+    expect(conflitsCollaborateurs(tasks, projects, collabs)).toHaveLength(0)
+  })
+
+  it('pas de conflit si le chevauchement est sur le MÊME projet', () => {
+    const projects = [projet('p1')]
+    const collabs = [collaborateur('c1', 'Lina')]
+    const tasks = [
+      tachePeriode('t1', '2026-07-25', '2026-07-28', 'p1', 'c1'),
+      tachePeriode('t2', '2026-07-27', '2026-07-29', 'p1', 'c1'),
+    ]
+    expect(conflitsCollaborateurs(tasks, projects, collabs)).toHaveLength(0)
+  })
+
+  it('pas de conflit entre collaborateurs différents', () => {
+    const projects = [projet('p1'), projet('p2')]
+    const collabs = [collaborateur('c1', 'Lina'), collaborateur('c2', 'Khelaf')]
+    const tasks = [
+      tachePeriode('t1', '2026-07-25', '2026-07-28', 'p1', 'c1'),
+      tachePeriode('t2', '2026-07-27', '2026-07-29', 'p2', 'c2'),
+    ]
+    expect(conflitsCollaborateurs(tasks, projects, collabs)).toHaveLength(0)
+  })
+
+  it('ignore les tâches sans responsable ou sans dates', () => {
+    const projects = [projet('p1'), projet('p2')]
+    const tasks = [
+      { ...tachePeriode('t1', '2026-07-25', '2026-07-28', 'p1', null) },
+      { ...tachePeriode('t2', '2026-07-27', '2026-07-29', 'p2', 'c1'), date_debut: null },
+    ]
+    expect(conflitsCollaborateurs(tasks, projects, [collaborateur('c1', 'Lina')])).toHaveLength(0)
+  })
+})
+
+describe('conflitsRessourcesModule', () => {
+  it('détecte une même ressource affectée à des tâches qui se chevauchent, sur 2 projets différents', () => {
+    const projects = [projet('p1'), projet('p2')]
+    const tasks = [
+      tachePeriode('t1', '2026-07-25', '2026-07-28', 'p1'),
+      tachePeriode('t2', '2026-07-27', '2026-07-29', 'p2'),
+    ]
+    const resources = [resource('r1', 'Pelleteuse')]
+    const assignments = [affectation('a1', 'r1', 'p1', 't1'), affectation('a2', 'r1', 'p2', 't2')]
+    const conflits = conflitsRessourcesModule(assignments, tasks, projects, resources)
+    expect(conflits).toHaveLength(1)
+    expect(conflits[0].nom).toBe('Pelleteuse')
+    expect(conflits[0].type).toBe('ressource')
+  })
+
+  it('ignore les affectations sans task_id (pas de date propre)', () => {
+    const projects = [projet('p1'), projet('p2')]
+    const tasks = [tachePeriode('t1', '2026-07-25', '2026-07-28', 'p1')]
+    const resources = [resource('r1', 'Pelleteuse')]
+    // a2 est une affectation au niveau projet entier, sans tâche → aucune date exploitable
+    const assignments = [affectation('a1', 'r1', 'p1', 't1'), affectation('a2', 'r1', 'p2', null)]
+    expect(conflitsRessourcesModule(assignments, tasks, projects, resources)).toHaveLength(0)
+  })
+
+  it('pas de conflit si le chevauchement est sur le MÊME projet', () => {
+    const projects = [projet('p1')]
+    const tasks = [
+      tachePeriode('t1', '2026-07-25', '2026-07-28', 'p1'),
+      tachePeriode('t2', '2026-07-27', '2026-07-29', 'p1'),
+    ]
+    const resources = [resource('r1', 'Pelleteuse')]
+    const assignments = [affectation('a1', 'r1', 'p1', 't1'), affectation('a2', 'r1', 'p1', 't2')]
+    expect(conflitsRessourcesModule(assignments, tasks, projects, resources)).toHaveLength(0)
   })
 })
