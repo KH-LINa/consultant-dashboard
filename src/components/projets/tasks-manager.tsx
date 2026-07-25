@@ -53,9 +53,19 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs }: Tasks
     setAdding(false)
   }
 
+  // Si une tâche progresse réellement (avancement ou statut) alors que le
+  // projet est encore marqué "à démarrer", on le repasse automatiquement à
+  // "en cours". La condition .eq('statut', 'a_demarrer') rend la mise à jour
+  // sans effet si le projet a déjà un statut manuel (en pause, terminé...).
+  async function bumpProjetEnCours() {
+    await supabase.from('projects').update({ statut: 'en_cours' }).eq('id', projectId).eq('statut', 'a_demarrer')
+  }
+
   async function update(id: string, field: string, value: string | number | null) {
     const { error } = await supabase.from('project_tasks').update({ [field]: value }).eq('id', id)
-    if (error) toast.error(error.message); else router.refresh()
+    if (error) { toast.error(error.message); return }
+    if (field === 'avancement' && typeof value === 'number' && value > 0) await bumpProjetEnCours()
+    router.refresh()
   }
 
   // Marquer une tâche "Fait" doit aussi mettre son avancement à 100 % —
@@ -64,7 +74,9 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs }: Tasks
     const payload: { statut: ProjectTaskStatus; avancement?: number } = { statut }
     if (statut === 'fait' && avancementActuel !== 100) payload.avancement = 100
     const { error } = await supabase.from('project_tasks').update(payload).eq('id', id)
-    if (error) toast.error(error.message); else router.refresh()
+    if (error) { toast.error(error.message); return }
+    if (statut !== 'a_faire') await bumpProjetEnCours()
+    router.refresh()
   }
 
   async function remove(id: string) {
