@@ -3,6 +3,7 @@ import { Resend } from 'resend'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { createElement } from 'react'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveAppBaseUrl } from '@/lib/base-url'
 import { QuotePDF } from '@/components/devis/quote-pdf'
 import { InvoicePDF } from '@/components/factures/invoice-pdf'
 
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ skipped: 'configuration email incomplète' })
   }
 
-  const origin = new URL(request.url).origin
+  const origin = resolveAppBaseUrl(request)
   const resend = new Resend(settings.resend_api_key)
 
   // --- Récupération des documents ---

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveAppBaseUrl } from '@/lib/base-url'
 import { toLocalISO } from '@/lib/gantt-deps'
 import { feriesCourants } from '@/lib/jours-ouvres'
 import {
@@ -218,7 +219,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, alertes: 0, projets_concernes: 0, recaps_envoyes: 0 })
   }
 
-  const origin = new URL(request.url).origin
+  const origin = resolveAppBaseUrl(request)
   const resend = new Resend(settings.resend_api_key)
   const fromName = settings.consultant_nom || 'i·a·infinity'
 

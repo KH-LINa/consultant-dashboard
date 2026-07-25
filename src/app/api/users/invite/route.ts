@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkRateLimit, clientId } from '@/lib/rate-limit'
+import { resolveAppBaseUrl } from '@/lib/base-url'
 import type { UserRole } from '@/lib/types'
 
 const ROLES: UserRole[] = ['admin', 'manager', 'collaborateur']
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
   if (!ROLES.includes(role)) return NextResponse.json({ error: 'Rôle invalide' }, { status: 400 })
 
   const admin = createAdminClient()
-  const origin = new URL(request.url).origin
+  const origin = resolveAppBaseUrl(request)
 
   const { data: invited, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
     data: { nom },

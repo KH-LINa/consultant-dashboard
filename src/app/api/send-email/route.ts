@@ -7,6 +7,7 @@ import { getSettings } from '@/lib/settings'
 import { QuotePDF } from '@/components/devis/quote-pdf'
 import { InvoicePDF } from '@/components/factures/invoice-pdf'
 import { checkRateLimit, clientId } from '@/lib/rate-limit'
+import { resolveAppBaseUrl } from '@/lib/base-url'
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
     }) as any)
 
     // Lien public d'acceptation
-    const origin = new URL(request.url).origin
+    const origin = resolveAppBaseUrl(request)
     acceptUrl = `${origin}/accepter/${quote.public_token}`
 
     // Reply-to avec token pour l'archivage des réponses email (plus-addressing)
