@@ -15,7 +15,7 @@
  *   + rollback et toast d'erreur.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import type { Task as GanttTask } from 'gantt-task-react'
@@ -74,6 +74,12 @@ const STATUT_BADGE: Record<ProjectTaskStatus, string> = {
   bloque: 'bg-red-100 text-red-700',
 }
 
+// Couleur des flèches ENTRE TÂCHES (prop arrowColor du Gantt, globale à la
+// lib) ; les flèches entre PHASES sont recolorées après coup (voir l'effet
+// plus bas) car gantt-task-react n'expose pas de couleur par flèche.
+const COULEUR_FLECHE_TACHE = '#534AB7'
+const COULEUR_FLECHE_PHASE = '#0e7490'
+
 function fmtTooltipDate(d: Date): string {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
 }
@@ -128,6 +134,11 @@ export function ProjectGantt({
 
   // Colonnes de la liste (Tâche / Début / Fin) redimensionnables par glisser
   const { widths: colWidths, startResize } = useResizableColumns()
+
+  // Conteneur du Gantt — utilisé pour recolorer après coup les flèches de
+  // dépendances ENTRE PHASES (voir l'effet plus bas : gantt-task-react
+  // n'expose qu'une seule couleur pour toutes les flèches, arrowColor).
+  const ganttWrapperRef = useRef<HTMLDivElement>(null)
 
   // Phases repliées (le triangle ▶/▼ de la liste replie/déplie leurs tâches)
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set())
@@ -413,6 +424,51 @@ export function ProjectGantt({
       return [bar, ...sousTaches.flatMap((c) => buildTaskEtSousTaches(c, `task_${t.id}`))]
     }
   }, [localPhases, localTasks, tachesAffichees, localMilestones, dependencies, phaseDependencies, collabById, conflictTaskIds, showCritical, criticalIds, collapsedPhases, projectTitre, realisation])
+
+  // Recolore après coup les flèches ENTRE PHASES dans une couleur distincte
+  // des flèches entre tâches (arrowColor du Gantt) : gantt-task-react ne
+  // permet qu'UNE seule couleur pour toutes les flèches à la fois, sans
+  // API pour distinguer par origine. On reconstruit donc l'ordre EXACT dans
+  // lequel la lib génère ses éléments <g class="arrow"> (voir sa fonction
+  // interne convertToBarTasks : pour chaque PRÉDÉCESSEUR p, dans l'ordre du
+  // tableau tasks fourni, pour chaque SUCCESSEUR s du même tableau dont
+  // p.id figure dans s.dependencies, une flèche p→s est ajoutée — ordre
+  // vérifié dans node_modules/gantt-task-react, version verrouillée) pour
+  // savoir quelle flèche du DOM correspond à quelle paire. Un
+  // MutationObserver réapplique la coloration à chaque redessin (drag,
+  // zoom, changement de vue…) puisque la lib recrée ces éléments SVG.
+  useEffect(() => {
+    const container = ganttWrapperRef.current
+    if (!container) return
+
+    function appliquerCouleurs() {
+      const arrowEls = container!.querySelectorAll('.arrow')
+      if (arrowEls.length === 0) return
+      const kinds: ('phase' | 'task')[] = []
+      for (const pred of ganttTasks) {
+        for (const succ of ganttTasks) {
+          if ((succ.dependencies ?? []).includes(pred.id)) {
+            kinds.push(pred.id.startsWith('phase_') ? 'phase' : 'task')
+          }
+        }
+      }
+      // Désynchro avec ce qu'a réellement rendu la lib (changement interne
+      // non prévu) : on n'applique rien plutôt que de colorer au hasard.
+      if (kinds.length !== arrowEls.length) return
+      arrowEls.forEach((el, i) => {
+        const couleur = kinds[i] === 'phase' ? COULEUR_FLECHE_PHASE : ''
+        const path = el.querySelector('path')
+        const polygon = el.querySelector('polygon')
+        if (path) (path as SVGPathElement).style.stroke = couleur
+        if (polygon) (polygon as SVGPolygonElement).style.fill = couleur
+      })
+    }
+
+    appliquerCouleurs()
+    const observer = new MutationObserver(appliquerCouleurs)
+    observer.observe(container, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [ganttTasks])
 
   // Numérotation hiérarchique WBS (1, 1.1, 1.1.1…) façon MS Project, déduite
   // de l'ordre d'affichage et du champ project (parent) de chaque ligne.
@@ -1114,7 +1170,7 @@ export function ProjectGantt({
                 Aucune tâche ne correspond aux filtres.
               </p>
             ) : (
-              <div className="overflow-x-auto border rounded-lg gantt-print-area">
+              <div ref={ganttWrapperRef} className="overflow-x-auto border rounded-lg gantt-print-area">
                 <Gantt
                   tasks={ganttTasks}
                   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
@@ -1131,7 +1187,7 @@ export function ProjectGantt({
                   columnWidth={columnWidth}
                   barCornerRadius={4}
                   todayColor="rgba(83,74,183,0.10)"
-                  arrowColor="#534AB7"
+                  arrowColor={COULEUR_FLECHE_TACHE}
                 />
               </div>
             )}
