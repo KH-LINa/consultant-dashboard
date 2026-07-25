@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { clientAppBaseUrl } from '@/lib/base-url'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -25,8 +26,9 @@ export default function ForgotPasswordPage() {
     const supabase = createClient()
 
     // L'URL de redirection doit pointer vers la page qui gérera le nouveau mot de passe.
+    // NEXT_PUBLIC_APP_URL en prod (si défini) sinon l'origine courante.
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/update-password`,
+      redirectTo: `${clientAppBaseUrl()}/update-password`,
     })
 
     if (error) {

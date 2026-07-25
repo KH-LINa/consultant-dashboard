@@ -24,3 +24,16 @@ export function resolveAppBaseUrl(request: NextRequest): string {
 
   return new URL(request.url).origin
 }
+
+/**
+ * Version pour composants client ('use client') : NEXT_PUBLIC_APP_URL si
+ * défini (inliné au build par Next), sinon l'origine de la fenêtre courante.
+ * Utilisé pour les redirectTo côté client (reset mot de passe) — attention,
+ * en dev local sans NEXT_PUBLIC_APP_URL, l'origine reste localhost. C'est le
+ * Site URL de Supabase qui détermine surtout la base des emails d'auth.
+ */
+export function clientAppBaseUrl(): string {
+  const explicit = process.env.NEXT_PUBLIC_APP_URL
+  if (explicit) return explicit.replace(/\/+$/, '')
+  return typeof window !== 'undefined' ? window.location.origin : ''
+}
