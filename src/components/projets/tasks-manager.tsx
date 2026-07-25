@@ -54,11 +54,15 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs }: Tasks
   }
 
   // Si une tâche progresse réellement (avancement ou statut) alors que le
-  // projet est encore marqué "à démarrer", on le repasse automatiquement à
-  // "en cours". La condition .eq('statut', 'a_demarrer') rend la mise à jour
-  // sans effet si le projet a déjà un statut manuel (en pause, terminé...).
+  // projet — ou une mission liée à ce projet — est encore marqué "à démarrer",
+  // on les repasse automatiquement à "en cours". La condition
+  // .eq('statut', 'a_demarrer') rend la mise à jour sans effet si le statut a
+  // déjà été positionné manuellement (en pause, terminé...).
   async function bumpProjetEnCours() {
-    await supabase.from('projects').update({ statut: 'en_cours' }).eq('id', projectId).eq('statut', 'a_demarrer')
+    await Promise.all([
+      supabase.from('projects').update({ statut: 'en_cours' }).eq('id', projectId).eq('statut', 'a_demarrer'),
+      supabase.from('missions').update({ statut: 'en_cours' }).eq('project_id', projectId).eq('statut', 'a_demarrer'),
+    ])
   }
 
   async function update(id: string, field: string, value: string | number | null) {
