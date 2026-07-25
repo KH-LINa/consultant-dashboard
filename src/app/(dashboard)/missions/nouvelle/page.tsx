@@ -7,9 +7,10 @@ export default async function NouvelleMissionPage({
   searchParams: { contact_id?: string; project_id?: string }
 }) {
   const supabase = await createClient()
-  const [{ data: contacts }, { data: collaborateurs }] = await Promise.all([
+  const [{ data: contacts }, { data: collaborateurs }, { data: projects }] = await Promise.all([
     supabase.from('contacts').select('id, nom, entreprise').order('nom'),
     supabase.from('collaborateurs').select('*').order('nom'),
+    supabase.from('projects').select('id, titre, contact_id').order('titre'),
   ])
 
   return (
@@ -20,6 +21,7 @@ export default async function NouvelleMissionPage({
       </div>
       <MissionForm
         contacts={contacts ?? []}
+        projects={projects ?? []}
         defaultContactId={searchParams.contact_id}
         defaultProjectId={searchParams.project_id}
         collaborateurs={collaborateurs ?? []}
