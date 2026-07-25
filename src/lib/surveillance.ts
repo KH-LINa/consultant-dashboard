@@ -1,6 +1,6 @@
 import type {
   Project, ProjectPhase, ProjectTask, ProjectMilestone, TaskDependency, PhaseDependency,
-  Collaborateur, Resource, ResourceAssignment,
+  Collaborateur, Resource, ResourceAssignment, ResourceUnavailability, ResourceUnavailabilityMotif,
 } from '@/lib/types'
 import { findDependencyConflicts } from '@/lib/gantt-deps'
 
@@ -216,6 +216,69 @@ export function conflitsRessourcesModule(
           b: { projetId: pb.id, projetTitre: pb.titre, itemTitre: tb.titre, debut: tb.date_debut!, fin: tb.date_fin!, heureDebut: tb.heure_debut, heureFin: tb.heure_fin },
         })
       }
+    }
+  }
+  return out
+}
+
+/**
+ * Une ressource (module Ressources) affectée à une tâche datée dont la
+ * période chevauche une période où elle est marquée indisponible (calendrier
+ * du module Ressources — voir resource-calendar.tsx). Ne couvre que les
+ * affectations liées à une tâche précise (task_id) : une affectation au
+ * niveau du projet entier n'a pas de date propre, donc pas de chevauchement
+ * calculable.
+ */
+export interface ConflitIndisponibilite {
+  ressourceNom: string
+  motif: ResourceUnavailabilityMotif
+  indispoDebut: string
+  indispoFin: string
+  projetId: string
+  projetTitre: string
+  tacheTitre: string
+  tacheDebut: string
+  tacheFin: string
+}
+
+export function conflitsIndisponibilite(
+  assignments: ResourceAssignment[],
+  tasks: ProjectTask[],
+  resources: Resource[],
+  unavailabilities: ResourceUnavailability[],
+  projects: Project[]
+): ConflitIndisponibilite[] {
+  const taskById = new Map(tasks.map((t) => [t.id, t]))
+  const resourceById = new Map(resources.map((r) => [r.id, r]))
+  const projetById = new Map(projects.map((p) => [p.id, p]))
+  const indispoByResource = new Map<string, ResourceUnavailability[]>()
+  for (const u of unavailabilities) {
+    if (!indispoByResource.has(u.resource_id)) indispoByResource.set(u.resource_id, [])
+    indispoByResource.get(u.resource_id)!.push(u)
+  }
+
+  const out: ConflitIndisponibilite[] = []
+  for (const a of assignments) {
+    if (!a.task_id) continue
+    const task = taskById.get(a.task_id)
+    if (!task || !task.date_debut || !task.date_fin) continue
+    const indispos = indispoByResource.get(a.resource_id) ?? []
+    for (const u of indispos) {
+      if (!seChevauchent(task.date_debut, task.date_fin, u.date_debut, u.date_fin)) continue
+      const resource = resourceById.get(a.resource_id)
+      const projet = projetById.get(task.project_id)
+      if (!resource || !projet) continue
+      out.push({
+        ressourceNom: resource.nom,
+        motif: u.motif,
+        indispoDebut: u.date_debut,
+        indispoFin: u.date_fin,
+        projetId: projet.id,
+        projetTitre: projet.titre,
+        tacheTitre: task.titre,
+        tacheDebut: task.date_debut,
+        tacheFin: task.date_fin,
+      })
     }
   }
   return out

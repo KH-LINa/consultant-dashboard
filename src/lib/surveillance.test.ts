@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
   alertesProjet, alertesTousProjets, nbAlertes, conflitsCollaborateurs, conflitsRessourcesModule,
+  conflitsIndisponibilite,
 } from './surveillance'
 import { feriesSet } from './jours-ouvres'
 import type {
   Project, ProjectTask, ProjectPhase, ProjectMilestone, TaskDependency, PhaseDependency,
-  Collaborateur, Resource, ResourceAssignment,
+  Collaborateur, Resource, ResourceAssignment, ResourceUnavailability, ResourceUnavailabilityMotif,
 } from './types'
 
 const feries = feriesSet(2026, 2026)
@@ -58,6 +59,12 @@ function resource(id: string, nom: string): Resource {
 
 function affectation(id: string, resourceId: string, projectId: string, taskId: string | null): ResourceAssignment {
   return { id, resource_id: resourceId, project_id: projectId, task_id: taskId, heures: 0, budget: 0, created_at: '' }
+}
+
+function indisponibilite(
+  id: string, resourceId: string, debut: string, fin: string, motif: ResourceUnavailabilityMotif = 'conge'
+): ResourceUnavailability {
+  return { id, resource_id: resourceId, date_debut: debut, date_fin: fin, motif, note: null, created_at: '' }
 }
 
 describe('alertesProjet', () => {
@@ -295,5 +302,46 @@ describe('conflitsRessourcesModule', () => {
     const resources = [resource('r1', 'Pelleteuse')]
     const assignments = [affectation('a1', 'r1', 'p1', 't1'), affectation('a2', 'r1', 'p1', 't2')]
     expect(conflitsRessourcesModule(assignments, tasks, projects, resources)).toHaveLength(0)
+  })
+})
+
+describe('conflitsIndisponibilite', () => {
+  it('détecte une ressource affectée à une tâche pendant une période où elle est indisponible', () => {
+    const projects = [projet('p1')]
+    const tasks = [tachePeriode('t1', '2026-07-25', '2026-07-28', 'p1')]
+    const resources = [resource('r1', 'Madjid')]
+    const assignments = [affectation('a1', 'r1', 'p1', 't1')]
+    const indispos = [indisponibilite('u1', 'r1', '2026-07-20', '2026-07-26', 'conge')]
+    const conflits = conflitsIndisponibilite(assignments, tasks, resources, indispos, projects)
+    expect(conflits).toHaveLength(1)
+    expect(conflits[0].ressourceNom).toBe('Madjid')
+    expect(conflits[0].motif).toBe('conge')
+    expect(conflits[0].projetTitre).toBe('Projet p1')
+  })
+
+  it('pas de conflit si la période d\'indisponibilité ne chevauche pas la tâche', () => {
+    const projects = [projet('p1')]
+    const tasks = [tachePeriode('t1', '2026-07-25', '2026-07-28', 'p1')]
+    const resources = [resource('r1', 'Madjid')]
+    const assignments = [affectation('a1', 'r1', 'p1', 't1')]
+    const indispos = [indisponibilite('u1', 'r1', '2026-08-01', '2026-08-05', 'conge')]
+    expect(conflitsIndisponibilite(assignments, tasks, resources, indispos, projects)).toHaveLength(0)
+  })
+
+  it('ignore les indisponibilités d\'une AUTRE ressource', () => {
+    const projects = [projet('p1')]
+    const tasks = [tachePeriode('t1', '2026-07-25', '2026-07-28', 'p1')]
+    const resources = [resource('r1', 'Madjid'), resource('r2', 'Lina')]
+    const assignments = [affectation('a1', 'r1', 'p1', 't1')]
+    const indispos = [indisponibilite('u1', 'r2', '2026-07-25', '2026-07-28', 'maladie')]
+    expect(conflitsIndisponibilite(assignments, tasks, resources, indispos, projects)).toHaveLength(0)
+  })
+
+  it('ignore les affectations sans task_id (pas de date propre)', () => {
+    const projects = [projet('p1')]
+    const resources = [resource('r1', 'Madjid')]
+    const assignments = [affectation('a1', 'r1', 'p1', null)]
+    const indispos = [indisponibilite('u1', 'r1', '2026-07-01', '2026-12-31', 'conge')]
+    expect(conflitsIndisponibilite(assignments, [], resources, indispos, projects)).toHaveLength(0)
   })
 })

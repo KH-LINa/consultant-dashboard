@@ -233,9 +233,10 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
           </CardTitle>
           <CardDescription>
             Email quotidien récapitulant, pour tous les projets actifs : tâches et jalons en retard,
-            conflits de dépendances, échéances des 3 prochains jours, et doubles réservations d'un
-            collaborateur ou d'une ressource sur plusieurs chantiers en même temps (envoyé uniquement
-            s'il y a quelque chose à signaler)
+            conflits de dépendances, échéances des 3 prochains jours, doubles réservations d'un
+            collaborateur ou d'une ressource sur plusieurs chantiers en même temps, et ressources
+            affectées à une tâche pendant une période d'indisponibilité (absence, congé, maladie...)
+            (envoyé uniquement s'il y a quelque chose à signaler)
           </CardDescription>
         </CardHeader>
         <CardContent>
