@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { ProjectTask, ProjectTaskStatus, Mission } from '@/lib/types'
+import type { ProjectTask, ProjectTaskStatus, Mission, ResourceAssignment } from '@/lib/types'
 import { estWeekend, feriesCourants } from '@/lib/jours-ouvres'
 import { toLocalISO } from '@/lib/gantt-deps'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { ChevronLeft, ChevronRight, ListChecks, FolderKanban } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ListChecks, FolderKanban, HardHat } from 'lucide-react'
 import { toast } from 'sonner'
 
 const STATUT_LABEL: Record<ProjectTaskStatus, string> = {
@@ -35,7 +35,17 @@ function fmt(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
 }
 
-export function MonPlanningView({ tasks, missions }: { tasks: TacheAvecProjet[]; missions: Mission[] }) {
+function euros(n: number): string {
+  return n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })
+}
+
+export function MonPlanningView({
+  tasks, missions, assignments,
+}: {
+  tasks: TacheAvecProjet[]
+  missions: Mission[]
+  assignments: ResourceAssignment[]
+}) {
   const router = useRouter()
   const supabase = createClient()
   const [cursor, setCursor] = useState(() => { const d = new Date(); d.setDate(1); return d })
@@ -199,6 +209,31 @@ export function MonPlanningView({ tasks, missions }: { tasks: TacheAvecProjet[];
                   </div>
                   <span className="text-xs text-gray-400 whitespace-nowrap">
                     {fmt(m.date_debut)} → {fmt(m.date_fin_prevue)}
+                  </span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {assignments.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <HardHat className="h-4 w-4 text-[#534AB7]" />
+                Mes affectations ressource ({assignments.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {assignments.map((a) => (
+                <div key={a.id} className="border rounded-lg p-3 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{a.project?.titre ?? 'Projet supprimé'}</p>
+                    {a.task?.titre && <p className="text-xs text-gray-400 truncate">→ {a.task.titre}</p>}
+                  </div>
+                  <span className="text-xs text-gray-400 whitespace-nowrap flex items-center gap-3">
+                    {a.heures > 0 && <span>{a.heures} h</span>}
+                    {a.budget > 0 && <span>{euros(a.budget)}</span>}
                   </span>
                 </div>
               ))}
