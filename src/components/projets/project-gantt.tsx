@@ -935,6 +935,10 @@ export function ProjectGantt({
       .gantt-print-area ._2dZTy { fill: transparent; }
       .gantt-print-area ._2dZTy:nth-child(even) { fill: rgba(0,0,0,0.025); }
       ` : ''}
+      /* Flèches de dépendances plus épaisses (défaut 1.5px) pour rester
+         lisibles sur les lignes de grille claires (classe stable "arrow",
+         non hachée — pas de risque de casse au changement de version). */
+      .gantt-print-area .arrow path { stroke-width: 2.5; }
     `}</style>
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3 flex-wrap gap-2">
@@ -1127,6 +1131,7 @@ export function ProjectGantt({
                   columnWidth={columnWidth}
                   barCornerRadius={4}
                   todayColor="rgba(83,74,183,0.10)"
+                  arrowColor="#534AB7"
                 />
               </div>
             )}
