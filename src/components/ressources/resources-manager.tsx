@@ -3,18 +3,26 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { Resource, ResourceAssignment, ResourceType } from '@/lib/types'
+import type {
+  Resource, ResourceAssignment, ResourceType, ResourceUnavailability, ResourceUnavailabilityMotif,
+} from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Plus, Trash2, User, Wrench, HardHat, Link2 } from 'lucide-react'
+import { Plus, Trash2, User, Wrench, HardHat, Link2, CalendarDays } from 'lucide-react'
 import { toast } from 'sonner'
+import { ResourceCalendar, MOTIF_LABEL, MOTIF_COLOR } from '@/components/ressources/resource-calendar'
 
 const TYPE_LABEL: Record<ResourceType, string> = { humain: 'Humain', materiel: 'Matériel' }
 const NONE = '__none__'
+const TOUS_MOTIFS = new Set<ResourceUnavailabilityMotif>(['absent', 'conge', 'maladie', 'autre'])
+
+function fmtCourt(iso: string): string {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
+}
 
 function euros(n: number): string {
   return n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })
@@ -24,9 +32,10 @@ interface ResourcesManagerProps {
   resources: Resource[]
   assignments: ResourceAssignment[]
   projects: { id: string; titre: string }[]
+  unavailabilities: ResourceUnavailability[]
 }
 
-export function ResourcesManager({ resources, assignments, projects }: ResourcesManagerProps) {
+export function ResourcesManager({ resources, assignments, projects, unavailabilities }: ResourcesManagerProps) {
   const router = useRouter()
   const supabase = createClient()
 
@@ -43,6 +52,15 @@ export function ResourcesManager({ resources, assignments, projects }: Resources
   const [affectBudget, setAffectBudget] = useState('')
   const [affecting, setAffecting] = useState(false)
 
+  // Calendrier de disponibilité (par ressource dépliée)
+  const [calendarFor, setCalendarFor] = useState<string | null>(null)
+  const [filtresMotif, setFiltresMotif] = useState<Set<ResourceUnavailabilityMotif>>(new Set(TOUS_MOTIFS))
+  const [indispDebut, setIndispDebut] = useState('')
+  const [indispFin, setIndispFin] = useState('')
+  const [indispMotif, setIndispMotif] = useState<ResourceUnavailabilityMotif>('absent')
+  const [indispNote, setIndispNote] = useState('')
+  const [addingIndisp, setAddingIndisp] = useState(false)
+
   const assignmentsByResource = useMemo(() => {
     const m = new Map<string, ResourceAssignment[]>()
     for (const a of assignments) {
@@ -51,6 +69,50 @@ export function ResourcesManager({ resources, assignments, projects }: Resources
     }
     return m
   }, [assignments])
+
+  const unavailabilitiesByResource = useMemo(() => {
+    const m = new Map<string, ResourceUnavailability[]>()
+    for (const u of unavailabilities) {
+      const arr = m.get(u.resource_id)
+      if (arr) arr.push(u); else m.set(u.resource_id, [u])
+    }
+    for (const arr of Array.from(m.values())) arr.sort((a, b) => b.date_debut.localeCompare(a.date_debut))
+    return m
+  }, [unavailabilities])
+
+  function toggleFiltreMotif(motif: ResourceUnavailabilityMotif) {
+    setFiltresMotif((prev) => {
+      const next = new Set(prev)
+      if (next.has(motif)) next.delete(motif); else next.add(motif)
+      return next
+    })
+  }
+
+  async function addUnavailability(resourceId: string) {
+    if (!indispDebut || !indispFin) { toast.error('Renseignez les dates de début et de fin'); return }
+    if (indispFin < indispDebut) { toast.error('La date de fin doit être après le début'); return }
+    setAddingIndisp(true)
+    const { error } = await supabase.from('resource_unavailability').insert({
+      resource_id: resourceId,
+      date_debut: indispDebut,
+      date_fin: indispFin,
+      motif: indispMotif,
+      note: indispNote.trim() || null,
+    })
+    setAddingIndisp(false)
+    if (error) toast.error(error.message)
+    else {
+      toast.success('Période ajoutée au calendrier')
+      setIndispDebut(''); setIndispFin(''); setIndispMotif('absent'); setIndispNote('')
+      router.refresh()
+    }
+  }
+
+  async function removeUnavailability(id: string) {
+    const { error } = await supabase.from('resource_unavailability').delete().eq('id', id)
+    if (error) toast.error(error.message)
+    else { toast.success('Période supprimée'); router.refresh() }
+  }
 
   async function addResource(e: React.FormEvent) {
     e.preventDefault()
@@ -124,6 +186,8 @@ export function ResourcesManager({ resources, assignments, projects }: Resources
           const totalHeures = affs.reduce((s, a) => s + (a.heures || 0), 0)
           const totalBudget = affs.reduce((s, a) => s + (a.budget || 0), 0)
           const coutEstime = totalHeures * (r.cout_horaire || 0) + totalBudget
+          const indisps = unavailabilitiesByResource.get(r.id) ?? []
+          const indispsFiltrees = indisps.filter((u) => filtresMotif.has(u.motif))
           return (
             <div key={r.id} className="border rounded-lg p-3 space-y-2 group">
               <div className="flex items-center gap-2 flex-wrap">
@@ -216,13 +280,112 @@ export function ResourcesManager({ resources, assignments, projects }: Resources
                   </Button>
                 </div>
               ) : (
-                <button
-                  onClick={() => { setAffectFor(r.id); setAffectProject(NONE); setAffectHeures(''); setAffectBudget('') }}
-                  className="pl-6 text-xs text-[#534AB7] hover:underline flex items-center gap-1"
-                >
-                  <Plus className="h-3 w-3" />
-                  Affecter à un projet
-                </button>
+                <div className="pl-6 flex items-center gap-3">
+                  <button
+                    onClick={() => { setAffectFor(r.id); setAffectProject(NONE); setAffectHeures(''); setAffectBudget('') }}
+                    className="text-xs text-[#534AB7] hover:underline flex items-center gap-1"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Affecter à un projet
+                  </button>
+                  <button
+                    onClick={() => setCalendarFor(calendarFor === r.id ? null : r.id)}
+                    className="text-xs text-[#534AB7] hover:underline flex items-center gap-1"
+                  >
+                    <CalendarDays className="h-3 w-3" />
+                    Calendrier{indisps.length > 0 ? ` (${indisps.length})` : ''}
+                  </button>
+                </div>
+              )}
+
+              {/* Calendrier de disponibilité */}
+              {calendarFor === r.id && (
+                <div className="pl-6 pt-1 space-y-3">
+                  {/* Filtres par motif */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {(Object.keys(MOTIF_LABEL) as ResourceUnavailabilityMotif[]).map((m) => {
+                      const actif = filtresMotif.has(m)
+                      return (
+                        <button
+                          key={m}
+                          onClick={() => toggleFiltreMotif(m)}
+                          className="text-[11px] px-2 py-0.5 rounded-full border transition-opacity"
+                          style={{
+                            background: actif ? MOTIF_COLOR[m] : 'transparent',
+                            color: actif ? '#fff' : MOTIF_COLOR[m],
+                            borderColor: MOTIF_COLOR[m],
+                            opacity: actif ? 1 : 0.6,
+                          }}
+                        >
+                          {MOTIF_LABEL[m]}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <div className="flex items-start gap-4 flex-wrap">
+                    <ResourceCalendar unavailabilities={indisps} filtres={filtresMotif} />
+
+                    <div className="flex-1 min-w-[240px] space-y-2">
+                      {/* Formulaire d'ajout */}
+                      <div className="flex items-end gap-2 flex-wrap">
+                        <div className="w-32">
+                          <label className="text-xs text-gray-500">Début</label>
+                          <Input type="date" className="h-8 text-xs" value={indispDebut}
+                            onChange={(e) => setIndispDebut(e.target.value)} />
+                        </div>
+                        <div className="w-32">
+                          <label className="text-xs text-gray-500">Fin</label>
+                          <Input type="date" className="h-8 text-xs" value={indispFin}
+                            onChange={(e) => setIndispFin(e.target.value)} />
+                        </div>
+                        <div className="w-28">
+                          <label className="text-xs text-gray-500">Motif</label>
+                          <Select value={indispMotif} onValueChange={(v) => setIndispMotif((v as ResourceUnavailabilityMotif) ?? 'absent')}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {(Object.keys(MOTIF_LABEL) as ResourceUnavailabilityMotif[]).map((m) => (
+                                <SelectItem key={m} value={m}>{MOTIF_LABEL[m]}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button size="sm" className="h-8" disabled={addingIndisp} onClick={() => addUnavailability(r.id)}>
+                          Ajouter
+                        </Button>
+                      </div>
+                      <Input value={indispNote} onChange={(e) => setIndispNote(e.target.value)}
+                        placeholder="Note (optionnel)" className="h-8 text-xs max-w-xs" />
+
+                      {/* Liste des périodes (filtrée) */}
+                      {indispsFiltrees.length > 0 ? (
+                        <div className="space-y-1 pt-1">
+                          {indispsFiltrees.map((u) => (
+                            <div key={u.id} className="flex items-center gap-2 text-xs text-gray-600 group/indisp">
+                              <span
+                                className="w-2 h-2 rounded-full shrink-0"
+                                style={{ background: MOTIF_COLOR[u.motif] }}
+                              />
+                              <span className="font-medium" style={{ color: MOTIF_COLOR[u.motif] }}>
+                                {MOTIF_LABEL[u.motif]}
+                              </span>
+                              <span>{fmtCourt(u.date_debut)} → {fmtCourt(u.date_fin)}</span>
+                              {u.note && <span className="text-gray-400 truncate">— {u.note}</span>}
+                              <Button variant="ghost" size="sm" onClick={() => removeUnavailability(u.id)}
+                                className="ml-auto h-5 w-5 p-0 text-red-400 hover:text-red-600 opacity-0 group-hover/indisp:opacity-100">
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400 pt-1">
+                          {indisps.length === 0 ? 'Aucune période renseignée.' : 'Aucune période pour les motifs sélectionnés.'}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           )

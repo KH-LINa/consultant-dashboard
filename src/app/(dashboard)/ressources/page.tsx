@@ -4,13 +4,14 @@ import { ResourcesManager } from '@/components/ressources/resources-manager'
 export default async function RessourcesPage() {
   const supabase = await createClient()
 
-  const [{ data: resources }, { data: assignments }, { data: projects }] = await Promise.all([
+  const [{ data: resources }, { data: assignments }, { data: projects }, { data: unavailabilities }] = await Promise.all([
     supabase.from('resources').select('*').order('created_at'),
     supabase
       .from('resource_assignments')
       .select('*, project:projects(id, titre), task:project_tasks(id, titre)')
       .order('created_at'),
     supabase.from('projects').select('id, titre').order('created_at', { ascending: false }),
+    supabase.from('resource_unavailability').select('*').order('date_debut'),
   ])
 
   return (
@@ -25,6 +26,7 @@ export default async function RessourcesPage() {
         resources={resources ?? []}
         assignments={assignments ?? []}
         projects={projects ?? []}
+        unavailabilities={unavailabilities ?? []}
       />
     </div>
   )

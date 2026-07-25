@@ -127,6 +127,19 @@ export interface ResourceAssignment {
   task?: Pick<ProjectTask, 'id' | 'titre'>
 }
 
+export type ResourceUnavailabilityMotif = 'absent' | 'conge' | 'maladie' | 'autre'
+
+// Période où une ressource n'est PAS disponible (calendrier du module Ressources).
+export interface ResourceUnavailability {
+  id: string
+  resource_id: string
+  date_debut: string
+  date_fin: string
+  motif: ResourceUnavailabilityMotif
+  note: string | null
+  created_at: string
+}
+
 // Types de liens MS Project : FS = fin→début (défaut), SS = début→début,
 // FF = fin→fin, SF = début→fin. En français : FD / DD / FF / DF.
 export type DependencyType = 'FS' | 'SS' | 'FF' | 'SF'
