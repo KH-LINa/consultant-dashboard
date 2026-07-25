@@ -1,6 +1,7 @@
 import type {
   Project, ProjectPhase, ProjectTask, ProjectMilestone, TaskDependency, PhaseDependency,
   Collaborateur, Resource, ResourceAssignment, ResourceUnavailability, ResourceUnavailabilityMotif,
+  ProjectTaskStatus,
 } from '@/lib/types'
 import { findDependencyConflicts } from '@/lib/gantt-deps'
 
@@ -280,6 +281,75 @@ export function conflitsIndisponibilite(
         tacheFin: task.date_fin,
       })
     }
+  }
+  return out
+}
+
+/**
+ * Récap des affectations d'UNE ressource humaine (module Ressources), pour
+ * l'email de rappel qui lui est envoyé directement (voir email ci-dessous).
+ * Une affectation liée à une tâche déjà "fait" est omise (rien à rappeler) ;
+ * une affectation au niveau du projet entier (sans task_id) est toujours
+ * incluse, faute de statut propre pour savoir si elle est terminée.
+ */
+export interface RecapItem {
+  projetId: string
+  projetTitre: string
+  tacheTitre: string | null
+  tacheDebut: string | null
+  tacheFin: string | null
+  tacheStatut: ProjectTaskStatus | null
+  heures: number
+  budget: number
+}
+
+export interface RecapRessource {
+  resourceId: string
+  resourceNom: string
+  resourceEmail: string
+  items: RecapItem[]
+}
+
+/**
+ * Un récap par ressource humaine ayant un email renseigné et au moins une
+ * affectation à signaler (parmi les projets actifs fournis). `projects` doit
+ * déjà être filtré aux projets actifs par l'appelant (même convention que
+ * alertesTousProjets), pour ne pas relancer sur un projet clôturé.
+ */
+export function recapsRessources(
+  resources: Resource[],
+  assignments: ResourceAssignment[],
+  tasks: ProjectTask[],
+  projects: Project[]
+): RecapRessource[] {
+  const taskById = new Map(tasks.map((t) => [t.id, t]))
+  const projetById = new Map(projects.map((p) => [p.id, p]))
+
+  const out: RecapRessource[] = []
+  for (const r of resources) {
+    if (r.type !== 'humain' || !r.email) continue
+
+    const items: RecapItem[] = []
+    for (const a of assignments) {
+      if (a.resource_id !== r.id) continue
+      const projet = projetById.get(a.project_id)
+      if (!projet) continue // projet non actif ou introuvable
+      const tache = a.task_id ? taskById.get(a.task_id) : undefined
+      if (tache && tache.statut === 'fait') continue // déjà terminée, rien à rappeler
+      items.push({
+        projetId: projet.id,
+        projetTitre: projet.titre,
+        tacheTitre: tache?.titre ?? null,
+        tacheDebut: tache?.date_debut ?? null,
+        tacheFin: tache?.date_fin ?? null,
+        tacheStatut: tache?.statut ?? null,
+        heures: a.heures,
+        budget: a.budget,
+      })
+    }
+    if (items.length === 0) continue
+
+    out.push({ resourceId: r.id, resourceNom: r.nom, resourceEmail: r.email, items })
   }
   return out
 }

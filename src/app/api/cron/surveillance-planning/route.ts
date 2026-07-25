@@ -5,15 +5,21 @@ import { toLocalISO } from '@/lib/gantt-deps'
 import { feriesCourants } from '@/lib/jours-ouvres'
 import {
   alertesTousProjets, nbAlertes, conflitsCollaborateurs, conflitsRessourcesModule, conflitsIndisponibilite,
-  type AlerteProjet, type ConflitRessource, type ConflitIndisponibilite,
+  recapsRessources,
+  type AlerteProjet, type ConflitRessource, type ConflitIndisponibilite, type RecapRessource,
 } from '@/lib/surveillance'
 import type {
   Project, ProjectPhase, ProjectTask, ProjectMilestone, TaskDependency, PhaseDependency,
   Collaborateur, Resource, ResourceAssignment, ResourceUnavailability, ResourceUnavailabilityMotif,
+  ProjectTaskStatus,
 } from '@/lib/types'
 
 const MOTIF_LABEL: Record<ResourceUnavailabilityMotif, string> = {
   absent: 'Absent', conge: 'Congé', maladie: 'Maladie', autre: 'Autre',
+}
+
+const STATUT_TACHE_LABEL: Record<ProjectTaskStatus, string> = {
+  a_faire: 'À faire', en_cours: 'En cours', fait: 'Fait', bloque: 'Bloqué',
 }
 
 export const dynamic = 'force-dynamic'
@@ -107,6 +113,27 @@ function renderConflitsIndisponibiliteHtml(conflits: ConflitIndisponibilite[], o
   `
 }
 
+function renderRecapRessourceHtml(recap: RecapRessource, origin: string, fromName: string): string {
+  return `
+    <div style="font-family: sans-serif; max-width: 640px; margin: 0 auto; color: #1a1a1a;">
+      <h2 style="color: #534AB7;">Votre récap de tâches</h2>
+      <p style="color:#6b7280; font-size:13px;">${new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+      <p style="font-size:14px;">Bonjour ${esc(recap.resourceNom)},</p>
+      <p style="font-size:14px;">Voici un récapitulatif de vos affectations en cours chez ${esc(fromName)} :</p>
+      <ul style="margin:0; padding-left:20px; font-size:13px; color:#374151;">
+        ${recap.items.map((it) => `
+          <li style="margin-bottom:10px;">
+            <a href="${origin}/projets/${it.projetId}" style="color:#534AB7; font-weight:600; text-decoration:none;">${esc(it.projetTitre)}</a>
+            ${it.tacheTitre ? `<br/>« ${esc(it.tacheTitre)} »${it.tacheStatut ? ` — ${STATUT_TACHE_LABEL[it.tacheStatut]}` : ''}${it.tacheDebut && it.tacheFin ? ` (${fmtPeriode(it.tacheDebut, it.tacheFin, null, null)})` : ''}` : ''}
+            ${(it.heures > 0 || it.budget > 0) ? `<br/><span style="color:#6b7280;">${it.heures > 0 ? `${it.heures} h` : ''}${it.heures > 0 && it.budget > 0 ? ' · ' : ''}${it.budget > 0 ? `${it.budget.toLocaleString('fr-FR')} €` : ''}</span>` : ''}
+          </li>`).join('')}
+      </ul>
+      <p style="font-size:12px; color:#9ca3af; margin-top:24px;">
+        Envoyé automatiquement.
+      </p>
+    </div>`
+}
+
 export async function GET(request: NextRequest) {
   // --- Sécurité : vérifier le secret (même convention que /api/cron/relances) ---
   const auth = request.headers.get('authorization')
@@ -182,18 +209,41 @@ export async function GET(request: NextRequest) {
   ]
   const conflitsIndispo = conflitsIndisponibilite(assignments, tasks, resources, unavailabilities, projects)
 
-  if (parProjet.length === 0 && conflitsRessources.length === 0 && conflitsIndispo.length === 0) {
-    return NextResponse.json({ success: true, alertes: 0, projets_concernes: 0 })
+  const recapsRes = settings.surveillance_recap_ressources_auto === 'true'
+    ? recapsRessources(resources, assignments, tasks, projects)
+    : []
+
+  const rienPourAdmin = parProjet.length === 0 && conflitsRessources.length === 0 && conflitsIndispo.length === 0
+  if (rienPourAdmin && recapsRes.length === 0) {
+    return NextResponse.json({ success: true, alertes: 0, projets_concernes: 0, recaps_envoyes: 0 })
+  }
+
+  const origin = new URL(request.url).origin
+  const resend = new Resend(settings.resend_api_key)
+  const fromName = settings.consultant_nom || 'i·a·infinity'
+
+  // --- Récaps individuels aux ressources (indépendants du digest admin :
+  // envoyés même si rien à signaler côté admin, et vice versa) ---
+  let recapsEnvoyes = 0
+  for (const recap of recapsRes) {
+    const { error } = await resend.emails.send({
+      from: `${fromName} <${settings.email_expediteur}>`,
+      to: [recap.resourceEmail],
+      subject: `Votre récap de tâches — ${recap.items.length} affectation${recap.items.length > 1 ? 's' : ''} en cours`,
+      html: renderRecapRessourceHtml(recap, origin, fromName),
+    })
+    if (!error) recapsEnvoyes++
+  }
+
+  if (rienPourAdmin) {
+    return NextResponse.json({ success: true, alertes: 0, projets_concernes: 0, recaps_envoyes: recapsEnvoyes })
   }
 
   const totalAlertes = parProjet.reduce((s, a) => s + nbAlertes(a), 0) + conflitsRessources.length + conflitsIndispo.length
-  const origin = new URL(request.url).origin
   const sections = renderConflitsRessourcesHtml(conflitsRessources, origin)
     + renderConflitsIndisponibiliteHtml(conflitsIndispo, origin)
     + parProjet.map((a) => renderProjetHtml(a, origin)).join('')
 
-  const resend = new Resend(settings.resend_api_key)
-  const fromName = settings.consultant_nom || 'i·a·infinity'
   const { error: mailErr } = await resend.emails.send({
     from: `${fromName} <${settings.email_expediteur}>`,
     to: [notifyTo],
@@ -210,13 +260,14 @@ export async function GET(request: NextRequest) {
   })
 
   if (mailErr) {
-    return NextResponse.json({ success: false, error: mailErr.message }, { status: 500 })
+    return NextResponse.json({ success: false, error: mailErr.message, recaps_envoyes: recapsEnvoyes }, { status: 500 })
   }
 
   return NextResponse.json({
     success: true,
     alertes: totalAlertes,
     projets_concernes: parProjet.length,
+    recaps_envoyes: recapsEnvoyes,
     date: new Date().toISOString(),
   })
 }

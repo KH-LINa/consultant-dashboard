@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   alertesProjet, alertesTousProjets, nbAlertes, conflitsCollaborateurs, conflitsRessourcesModule,
-  conflitsIndisponibilite,
+  conflitsIndisponibilite, recapsRessources,
 } from './surveillance'
 import { feriesSet } from './jours-ouvres'
 import type {
@@ -53,12 +53,14 @@ function collaborateur(id: string, nom: string): Collaborateur {
   return { id, nom, email: null, role: null, couleur: '#000', created_at: '' }
 }
 
-function resource(id: string, nom: string): Resource {
-  return { id, nom, type: 'humain', cout_horaire: 0, notes: null, created_at: '' }
+function resource(id: string, nom: string, email: string | null = null, type: Resource['type'] = 'humain'): Resource {
+  return { id, nom, type, cout_horaire: 0, notes: null, email, created_at: '' }
 }
 
-function affectation(id: string, resourceId: string, projectId: string, taskId: string | null): ResourceAssignment {
-  return { id, resource_id: resourceId, project_id: projectId, task_id: taskId, heures: 0, budget: 0, created_at: '' }
+function affectation(
+  id: string, resourceId: string, projectId: string, taskId: string | null, heures = 0, budget = 0
+): ResourceAssignment {
+  return { id, resource_id: resourceId, project_id: projectId, task_id: taskId, heures, budget, created_at: '' }
 }
 
 function indisponibilite(
@@ -343,5 +345,64 @@ describe('conflitsIndisponibilite', () => {
     const assignments = [affectation('a1', 'r1', 'p1', null)]
     const indispos = [indisponibilite('u1', 'r1', '2026-07-01', '2026-12-31', 'conge')]
     expect(conflitsIndisponibilite(assignments, [], resources, indispos, projects)).toHaveLength(0)
+  })
+})
+
+describe('recapsRessources', () => {
+  it('inclut une affectation au niveau projet (sans tâche), avec heures/budget', () => {
+    const projects = [projet('p1')]
+    const resources = [resource('r1', 'Madjid', 'madjid@exemple.fr')]
+    const assignments = [affectation('a1', 'r1', 'p1', null, 12, 500)]
+    const recaps = recapsRessources(resources, assignments, [], projects)
+    expect(recaps).toHaveLength(1)
+    expect(recaps[0].resourceEmail).toBe('madjid@exemple.fr')
+    expect(recaps[0].items).toEqual([
+      { projetId: 'p1', projetTitre: 'Projet p1', tacheTitre: null, tacheDebut: null, tacheFin: null, tacheStatut: null, heures: 12, budget: 500 },
+    ])
+  })
+
+  it('inclut une tâche pas encore faite, avec ses dates/statut', () => {
+    const projects = [projet('p1')]
+    const tasks = [tachePeriode('t1', '2026-08-01', '2026-08-05', 'p1')]
+    const resources = [resource('r1', 'Madjid', 'madjid@exemple.fr')]
+    const assignments = [affectation('a1', 'r1', 'p1', 't1')]
+    const recaps = recapsRessources(resources, assignments, tasks, projects)
+    expect(recaps).toHaveLength(1)
+    expect(recaps[0].items[0].tacheTitre).toBe('t1')
+    expect(recaps[0].items[0].tacheStatut).toBe('a_faire')
+  })
+
+  it('omet une affectation liée à une tâche déjà "fait"', () => {
+    const projects = [projet('p1')]
+    const tasks = [tache('t1', '2026-08-01', 'fait', 'p1')]
+    const resources = [resource('r1', 'Madjid', 'madjid@exemple.fr')]
+    const assignments = [affectation('a1', 'r1', 'p1', 't1')]
+    expect(recapsRessources(resources, assignments, tasks, projects)).toHaveLength(0)
+  })
+
+  it('ignore une ressource sans email', () => {
+    const projects = [projet('p1')]
+    const resources = [resource('r1', 'Madjid', null)]
+    const assignments = [affectation('a1', 'r1', 'p1', null)]
+    expect(recapsRessources(resources, assignments, [], projects)).toHaveLength(0)
+  })
+
+  it('ignore une ressource de type matériel même avec un email', () => {
+    const projects = [projet('p1')]
+    const resources = [resource('r1', 'Nacelle', 'contact@loueur.fr', 'materiel')]
+    const assignments = [affectation('a1', 'r1', 'p1', null)]
+    expect(recapsRessources(resources, assignments, [], projects)).toHaveLength(0)
+  })
+
+  it('ignore une affectation sur un projet absent de la liste (non actif)', () => {
+    const projects = [projet('p1')] // p2 volontairement absent (ex. terminé/annulé)
+    const resources = [resource('r1', 'Madjid', 'madjid@exemple.fr')]
+    const assignments = [affectation('a1', 'r1', 'p2', null)]
+    expect(recapsRessources(resources, assignments, [], projects)).toHaveLength(0)
+  })
+
+  it('une ressource sans aucune affectation à signaler est absente du résultat', () => {
+    const resources = [resource('r1', 'Madjid', 'madjid@exemple.fr')]
+    expect(recapsRessources(resources, [], [], [])).toHaveLength(0)
   })
 })

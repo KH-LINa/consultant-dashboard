@@ -14,6 +14,7 @@ export interface ConsultantSettings {
   taux_versement_ir: string
   relances_auto: string
   surveillance_planning_auto: string
+  surveillance_recap_ressources_auto: string
 }
 
 const DEFAULTS: ConsultantSettings = {
@@ -30,6 +31,10 @@ const DEFAULTS: ConsultantSettings = {
   taux_versement_ir: '2.2',
   relances_auto: 'true',
   surveillance_planning_auto: 'true',
+  // Envoie un email individuel à chaque ressource (adresse renseignée) —
+  // désactivé par défaut : contrairement au digest admin (usage interne),
+  // ceci envoie des emails à des tiers, à activer explicitement.
+  surveillance_recap_ressources_auto: 'false',
 }
 
 export async function getSettings(): Promise<ConsultantSettings> {

@@ -255,6 +255,24 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
           <p className="text-xs text-gray-400 mt-2">
             Envoyé à l&apos;adresse de notification ci-dessus (ou à défaut l&apos;email professionnel).
           </p>
+
+          <div className="flex items-center gap-2 mt-4 pt-4 border-t">
+            <input
+              type="checkbox"
+              id="surveillance_recap_ressources_auto"
+              checked={form.surveillance_recap_ressources_auto === 'true'}
+              onChange={(e) => set('surveillance_recap_ressources_auto', e.target.checked ? 'true' : 'false')}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            <Label htmlFor="surveillance_recap_ressources_auto" className="cursor-pointer">
+              Envoyer aussi un récap quotidien à chaque ressource
+            </Label>
+          </div>
+          <p className="text-xs text-gray-400 mt-2">
+            Un email individuel est envoyé à l&apos;adresse renseignée sur chaque ressource humaine
+            (page Ressources), listant ses affectations en cours (projet, tâche si précisée, heures/budget).
+            Envoyé uniquement aux ressources ayant au moins une affectation à signaler.
+          </p>
         </CardContent>
       </Card>
 
