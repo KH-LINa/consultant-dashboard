@@ -55,6 +55,21 @@ export interface Collaborateur {
   created_at: string
 }
 
+// Rôle d'accès à l'outil (à ne pas confondre avec Collaborateur.role, qui
+// est un intitulé de poste libre) : admin = accès complet + gestion des
+// comptes, manager = accès complet sauf gestion des comptes, collaborateur
+// = accès limité à son propre planning (voir supabase-profiles-migration.sql).
+export type UserRole = 'admin' | 'manager' | 'collaborateur'
+
+export interface Profile {
+  id: string
+  email: string
+  nom: string
+  role: UserRole
+  collaborateur_id: string | null
+  created_at: string
+}
+
 export interface ProjectPhase {
   id: string
   project_id: string

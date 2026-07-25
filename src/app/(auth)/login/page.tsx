@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -34,6 +34,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
 
+  // Lu côté client (plutôt que useSearchParams) pour éviter d'imposer une
+  // limite de Suspense sur cette page, statiquement rendue.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('erreur') === 'acces_refuse') {
+      toast.error("Ce compte n'a pas encore d'accès configuré. Contactez votre administrateur.")
+    }
+  }, [])
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -59,7 +67,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold">Connexion</CardTitle>
-          <CardDescription>Accès réservé à l'administrateur</CardDescription>
+          <CardDescription>Accès réservé aux comptes autorisés</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">

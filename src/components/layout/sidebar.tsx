@@ -21,8 +21,10 @@ import {
   Briefcase,
   FileSignature,
   HardHat,
+  CalendarDays,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import type { UserRole } from '@/lib/types'
 
 const navItems = [
   { href: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
@@ -39,10 +41,22 @@ const navItems = [
   { href: '/parametres', label: 'Paramètres', icon: Settings },
 ]
 
-export function Sidebar() {
+// Un collaborateur n'a accès qu'à son propre planning — le reste de l'outil
+// (contacts, devis, factures, comptabilité, paramètres...) lui est fermé
+// côté RLS/middleware ; la sidebar reflète simplement cette restriction.
+const collaborateurNavItems = [
+  { href: '/mon-planning', label: 'Mon planning', icon: CalendarDays },
+]
+
+interface SidebarProps {
+  role: UserRole | null
+}
+
+export function Sidebar({ role }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
+  const items = role === 'collaborateur' ? collaborateurNavItems : navItems
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -59,7 +73,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-1">
-        {navItems.map(({ href, label, icon: Icon }) => (
+        {items.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
             href={href}
