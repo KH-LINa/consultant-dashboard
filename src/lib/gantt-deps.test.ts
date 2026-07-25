@@ -199,6 +199,17 @@ describe('phaseStatus (auto-calculé, aucun champ modifiable en base)', () => {
     const tasks = [tache('t1', '2026-07-01', '2026-07-02', 'autre-phase', 100, 'fait')]
     expect(phaseStatus(tasks, 'ph1')).toBe('a_faire')
   })
+
+  it('avancement à 100 % compte comme fait même si le statut est resté "en cours" (libellé non mis à jour)', () => {
+    // Cas réel rencontré : une tâche à 100 % d'avancement dont le statut
+    // n'a pas été basculé sur "Fait" ne doit pas empêcher la phase
+    // d'apparaître comme terminée (verte).
+    const tasks = [
+      tache('t1', '2026-07-01', '2026-07-02', 'ph1', 100, 'fait'),
+      tache('t2', '2026-07-03', '2026-07-04', 'ph1', 100, 'en_cours'),
+    ]
+    expect(phaseStatus(tasks, 'ph1')).toBe('fait')
+  })
 })
 
 describe('findDependencyConflicts appliqué aux PHASES (même logique générique que les tâches)', () => {

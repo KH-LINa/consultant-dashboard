@@ -332,14 +332,17 @@ export function projectCompletionRate(tasks: ProjectTask[], phases: ProjectPhase
  * n'a de sens que dérivé de ce qu'elle contient) :
  * - aucune tâche, ou toutes « à faire » et 0 % d'avancement → à faire
  * - au moins une tâche bloquée → bloqué
- * - toutes les tâches sont « fait » → fait
+ * - toutes les tâches sont « fait » (statut, OU avancement à 100 % même si
+ *   le statut n'a pas été mis à jour — un avancement à 100 % vaut « fait »
+ *   quel que soit le libellé encore affiché) → fait
  * - sinon (au moins une tâche entamée) → en cours
  */
 export function phaseStatus(tasks: ProjectTask[], phaseId: string): ProjectTaskStatus {
   const scope = tasks.filter((t) => t.phase_id === phaseId)
   if (scope.length === 0) return 'a_faire'
   if (scope.some((t) => t.statut === 'bloque')) return 'bloque'
-  if (scope.every((t) => t.statut === 'fait')) return 'fait'
+  const estFait = (t: ProjectTask) => t.statut === 'fait' || (t.avancement ?? 0) >= 100
+  if (scope.every(estFait)) return 'fait'
   if (scope.some((t) => t.statut !== 'a_faire' || (t.avancement ?? 0) > 0)) return 'en_cours'
   return 'a_faire'
 }
