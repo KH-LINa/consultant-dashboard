@@ -23,6 +23,7 @@ import 'gantt-task-react/dist/index.css'
 import { createClient } from '@/lib/supabase/client'
 import type {
   ProjectPhase, ProjectMilestone, ProjectTask, TaskDependency, PhaseDependency, Collaborateur, ProjectTaskStatus,
+  MilestoneStatus,
 } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -72,6 +73,14 @@ const STATUT_BADGE: Record<ProjectTaskStatus, string> = {
   en_cours: 'bg-blue-100 text-blue-700',
   fait: 'bg-green-100 text-green-700',
   bloque: 'bg-red-100 text-red-700',
+}
+
+// Couleur des losanges de jalons selon leur statut réel — auparavant toujours
+// orange, ce qui laissait croire à tort qu'un jalon "à faire" était atteint.
+const MILESTONE_COLOR: Record<MilestoneStatus, string> = {
+  a_faire: '#9ca3af',  // gris
+  atteint: '#22c55e',  // vert
+  en_retard: '#ef4444', // rouge
 }
 
 // Couleur des flèches ENTRE TÂCHES (prop arrowColor du Gantt, globale à la
@@ -320,6 +329,7 @@ export function ProjectGantt({
     for (const m of localMilestones) {
       const d = toDate(m.date_echeance)
       if (!d) continue
+      const couleurMilestone = MILESTONE_COLOR[m.statut] ?? MILESTONE_COLOR.a_faire
       blocks.push({
         start: m.date_echeance!,
         prio: 1,
@@ -329,7 +339,7 @@ export function ProjectGantt({
           start: d, end: d,
           type: 'milestone',
           progress: 0,
-          styles: { backgroundColor: '#f59e0b', backgroundSelectedColor: '#d97706' },
+          styles: { backgroundColor: couleurMilestone, backgroundSelectedColor: couleurMilestone },
         }],
       })
     }
@@ -1212,7 +1222,12 @@ export function ProjectGantt({
                 <>
                   <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#dc2626]" />Critique (aucune marge)</span>
                   <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#cbd5e1]" />Avec marge</span>
-                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rotate-45 bg-[#f59e0b]" />Jalon</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rotate-45 bg-[#9ca3af]" />
+                    <span className="w-3 h-3 rotate-45 bg-[#22c55e]" />
+                    <span className="w-3 h-3 rotate-45 bg-[#ef4444]" />
+                    Jalon (à faire / atteint / en retard)
+                  </span>
                 </>
               ) : (
                 <>
@@ -1220,7 +1235,12 @@ export function ProjectGantt({
                   <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#3b82f6]" />En cours</span>
                   <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#22c55e]" />Fait</span>
                   <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#ef4444]" />Bloqué</span>
-                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rotate-45 bg-[#f59e0b]" />Jalon</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rotate-45 bg-[#9ca3af]" />
+                    <span className="w-3 h-3 rotate-45 bg-[#22c55e]" />
+                    <span className="w-3 h-3 rotate-45 bg-[#ef4444]" />
+                    Jalon (à faire / atteint / en retard)
+                  </span>
                 </>
               )}
               <span className="ml-auto">Glissez une barre = sauvegarde auto · clic sur un jalon = détails.</span>
