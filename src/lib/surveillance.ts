@@ -110,20 +110,34 @@ export function alertesTousProjets(
  * Ressources) sur des périodes qui se chevauchent, sur DEUX PROJETS
  * DIFFÉRENTS (un chevauchement entre deux tâches du MÊME projet n'est pas
  * signalé ici — ce n'est pas le scénario visé : deux chantiers en même temps).
- * Granularité JOUR uniquement : ni les tâches ni les affectations de
- * ressources n'enregistrent d'heure précise, seulement des dates — un
- * chevauchement de jours ne veut donc pas forcément dire un chevauchement
- * d'heures dans la journée, juste une période commune à surveiller.
+ *
+ * Granularité : quand les DEUX tâches sont sur un seul et même jour (pas
+ * une plage de plusieurs jours) ET ont chacune une heure de début ET de fin
+ * renseignées, le chevauchement est vérifié à l'heure près. Dans tous les
+ * autres cas (tâche sur plusieurs jours, ou heure manquante d'un côté ou de
+ * l'autre), on reste au jour entier : pas d'heure précisée = tâche traitée
+ * comme occupant toute la journée, donc un chevauchement de jours suffit.
  */
 export interface ConflitRessource {
   nom: string
   type: 'collaborateur' | 'ressource'
-  a: { projetId: string; projetTitre: string; itemTitre: string; debut: string; fin: string }
-  b: { projetId: string; projetTitre: string; itemTitre: string; debut: string; fin: string }
+  a: { projetId: string; projetTitre: string; itemTitre: string; debut: string; fin: string; heureDebut: string | null; heureFin: string | null }
+  b: { projetId: string; projetTitre: string; itemTitre: string; debut: string; fin: string; heureDebut: string | null; heureFin: string | null }
 }
 
 function seChevauchent(debutA: string, finA: string, debutB: string, finB: string): boolean {
   return debutA <= finB && debutB <= finA
+}
+
+/** Vrai si deux tâches se chevauchent, affiné à l'heure quand c'est possible (voir ConflitRessource ci-dessus). */
+function tachesSeChevauchent(a: ProjectTask, b: ProjectTask): boolean {
+  if (!seChevauchent(a.date_debut!, a.date_fin!, b.date_debut!, b.date_fin!)) return false
+
+  const memeJourUnique = a.date_debut === a.date_fin && b.date_debut === b.date_fin && a.date_debut === b.date_debut
+  if (memeJourUnique && a.heure_debut && a.heure_fin && b.heure_debut && b.heure_fin) {
+    return a.heure_debut < b.heure_fin && b.heure_debut < a.heure_fin
+  }
+  return true
 }
 
 /** Un même collaborateur responsable de tâches datées qui se chevauchent sur 2 projets différents. */
@@ -148,13 +162,13 @@ export function conflitsCollaborateurs(
       for (let j = i + 1; j < taches.length; j++) {
         const ta = taches[i], tb = taches[j]
         if (ta.project_id === tb.project_id) continue
-        if (!seChevauchent(ta.date_debut!, ta.date_fin!, tb.date_debut!, tb.date_fin!)) continue
+        if (!tachesSeChevauchent(ta, tb)) continue
         const pa = projetById.get(ta.project_id), pb = projetById.get(tb.project_id)
         if (!pa || !pb) continue
         out.push({
           nom, type: 'collaborateur',
-          a: { projetId: pa.id, projetTitre: pa.titre, itemTitre: ta.titre, debut: ta.date_debut!, fin: ta.date_fin! },
-          b: { projetId: pb.id, projetTitre: pb.titre, itemTitre: tb.titre, debut: tb.date_debut!, fin: tb.date_fin! },
+          a: { projetId: pa.id, projetTitre: pa.titre, itemTitre: ta.titre, debut: ta.date_debut!, fin: ta.date_fin!, heureDebut: ta.heure_debut, heureFin: ta.heure_fin },
+          b: { projetId: pb.id, projetTitre: pb.titre, itemTitre: tb.titre, debut: tb.date_debut!, fin: tb.date_fin!, heureDebut: tb.heure_debut, heureFin: tb.heure_fin },
         })
       }
     }
@@ -193,13 +207,13 @@ export function conflitsRessourcesModule(
       for (let j = i + 1; j < taches.length; j++) {
         const ta = taches[i], tb = taches[j]
         if (ta.project_id === tb.project_id) continue
-        if (!seChevauchent(ta.date_debut!, ta.date_fin!, tb.date_debut!, tb.date_fin!)) continue
+        if (!tachesSeChevauchent(ta, tb)) continue
         const pa = projetById.get(ta.project_id), pb = projetById.get(tb.project_id)
         if (!pa || !pb) continue
         out.push({
           nom, type: 'ressource',
-          a: { projetId: pa.id, projetTitre: pa.titre, itemTitre: ta.titre, debut: ta.date_debut!, fin: ta.date_fin! },
-          b: { projetId: pb.id, projetTitre: pb.titre, itemTitre: tb.titre, debut: tb.date_debut!, fin: tb.date_fin! },
+          a: { projetId: pa.id, projetTitre: pa.titre, itemTitre: ta.titre, debut: ta.date_debut!, fin: ta.date_fin!, heureDebut: ta.heure_debut, heureFin: ta.heure_fin },
+          b: { projetId: pb.id, projetTitre: pb.titre, itemTitre: tb.titre, debut: tb.date_debut!, fin: tb.date_fin!, heureDebut: tb.heure_debut, heureFin: tb.heure_fin },
         })
       }
     }

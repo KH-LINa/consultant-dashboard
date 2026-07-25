@@ -177,6 +177,14 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs }: Tasks
                     {resp.nom}
                   </span>
                 )}
+                <div className="flex items-center gap-1.5" title="Heure optionnelle — affine la détection de double réservation à l'heure près (uniquement pour une tâche sur une seule journée) ; sans heure, la tâche est traitée comme occupant toute la journée">
+                  <span className="text-xs text-gray-400">Heure</span>
+                  <Input type="time" className="h-8 w-28 text-xs" defaultValue={t.heure_debut ?? ''}
+                    onChange={(e) => update(t.id, 'heure_debut', e.target.value || null)} />
+                  <span className="text-xs text-gray-400">→</span>
+                  <Input type="time" className="h-8 w-28 text-xs" defaultValue={t.heure_fin ?? ''}
+                    onChange={(e) => update(t.id, 'heure_fin', e.target.value || null)} />
+                </div>
                 <div className="flex items-center gap-2 ml-auto">
                   <span className="text-xs text-gray-400">Avancement</span>
                   <Input type="number" min="0" max="100" className="h-8 w-16 text-xs text-right"

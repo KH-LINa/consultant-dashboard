@@ -21,7 +21,8 @@ function tache(
 ): ProjectTask {
   return {
     id, project_id: projectId, phase_id: null, parent_task_id: null, responsable_id: null,
-    titre: id, date_debut: dateFin, date_fin: dateFin, statut, avancement: 0, ordre: 0, created_at: '', serie_id: null,
+    titre: id, date_debut: dateFin, date_fin: dateFin, heure_debut: null, heure_fin: null,
+    statut, avancement: 0, ordre: 0, created_at: '', serie_id: null,
   }
 }
 
@@ -37,11 +38,13 @@ function phase(id: string, debut: string, fin: string, projectId = 'p1'): Projec
 
 // Tâche avec début/fin distincts et un responsable — pour les tests de chevauchement.
 function tachePeriode(
-  id: string, debut: string, fin: string, projectId = 'p1', responsableId: string | null = null
+  id: string, debut: string, fin: string, projectId = 'p1', responsableId: string | null = null,
+  heureDebut: string | null = null, heureFin: string | null = null
 ): ProjectTask {
   return {
     id, project_id: projectId, phase_id: null, parent_task_id: null, responsable_id: responsableId,
-    titre: id, date_debut: debut, date_fin: fin, statut: 'a_faire', avancement: 0, ordre: 0, created_at: '', serie_id: null,
+    titre: id, date_debut: debut, date_fin: fin, heure_debut: heureDebut, heure_fin: heureFin,
+    statut: 'a_faire', avancement: 0, ordre: 0, created_at: '', serie_id: null,
   }
 }
 
@@ -203,6 +206,59 @@ describe('conflitsCollaborateurs', () => {
       { ...tachePeriode('t2', '2026-07-27', '2026-07-29', 'p2', 'c1'), date_debut: null },
     ]
     expect(conflitsCollaborateurs(tasks, projects, [collaborateur('c1', 'Lina')])).toHaveLength(0)
+  })
+
+  it('même jour, heures disjointes des deux côtés → pas de conflit (affiné à l\'heure)', () => {
+    const projects = [projet('p1'), projet('p2')]
+    const collabs = [collaborateur('c1', 'Lina')]
+    const tasks = [
+      tachePeriode('t1', '2026-07-25', '2026-07-25', 'p1', 'c1', '09:00', '11:00'),
+      tachePeriode('t2', '2026-07-25', '2026-07-25', 'p2', 'c1', '14:00', '16:00'),
+    ]
+    expect(conflitsCollaborateurs(tasks, projects, collabs)).toHaveLength(0)
+  })
+
+  it('même jour, heures qui se chevauchent des deux côtés → conflit', () => {
+    const projects = [projet('p1'), projet('p2')]
+    const collabs = [collaborateur('c1', 'Lina')]
+    const tasks = [
+      tachePeriode('t1', '2026-07-25', '2026-07-25', 'p1', 'c1', '09:00', '11:00'),
+      tachePeriode('t2', '2026-07-25', '2026-07-25', 'p2', 'c1', '10:00', '12:00'),
+    ]
+    const conflits = conflitsCollaborateurs(tasks, projects, collabs)
+    expect(conflits).toHaveLength(1)
+    expect(conflits[0].a.heureDebut).toBe('09:00')
+  })
+
+  it('même jour, heures qui se touchent exactement (10h-11h et 11h-12h) → pas de conflit', () => {
+    const projects = [projet('p1'), projet('p2')]
+    const collabs = [collaborateur('c1', 'Lina')]
+    const tasks = [
+      tachePeriode('t1', '2026-07-25', '2026-07-25', 'p1', 'c1', '10:00', '11:00'),
+      tachePeriode('t2', '2026-07-25', '2026-07-25', 'p2', 'c1', '11:00', '12:00'),
+    ]
+    expect(conflitsCollaborateurs(tasks, projects, collabs)).toHaveLength(0)
+  })
+
+  it('heure précisée d\'un seul côté → pas assez d\'info pour affiner, on garde le conflit jour entier', () => {
+    const projects = [projet('p1'), projet('p2')]
+    const collabs = [collaborateur('c1', 'Lina')]
+    const tasks = [
+      tachePeriode('t1', '2026-07-25', '2026-07-25', 'p1', 'c1', '09:00', '11:00'),
+      tachePeriode('t2', '2026-07-25', '2026-07-25', 'p2', 'c1'), // pas d'heure précisée
+    ]
+    expect(conflitsCollaborateurs(tasks, projects, collabs)).toHaveLength(1)
+  })
+
+  it('tâche sur plusieurs jours avec heures : les heures ne s\'appliquent pas, le chevauchement de jours suffit', () => {
+    const projects = [projet('p1'), projet('p2')]
+    const collabs = [collaborateur('c1', 'Lina')]
+    const tasks = [
+      // t1 dure 2 jours (25→26), même si des heures sont renseignées elles ne réduisent pas la période
+      tachePeriode('t1', '2026-07-25', '2026-07-26', 'p1', 'c1', '09:00', '11:00'),
+      tachePeriode('t2', '2026-07-26', '2026-07-26', 'p2', 'c1', '14:00', '16:00'),
+    ]
+    expect(conflitsCollaborateurs(tasks, projects, collabs)).toHaveLength(1)
   })
 })
 

@@ -91,6 +91,10 @@ export interface ProjectTask {
   titre: string
   date_debut: string | null
   date_fin: string | null
+  // Heure optionnelle (format "HH:MM"), en plus des dates — sans heure,
+  // une tâche est considérée comme occupant la journée entière.
+  heure_debut: string | null
+  heure_fin: string | null
   statut: ProjectTaskStatus
   avancement: number
   ordre: number

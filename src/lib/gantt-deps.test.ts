@@ -14,7 +14,7 @@ function tache(
 ): ProjectTask {
   return {
     id, project_id: 'p', phase_id: phaseId, parent_task_id: null, responsable_id: null,
-    titre: id, date_debut: debut, date_fin: fin, statut, avancement,
+    titre: id, date_debut: debut, date_fin: fin, heure_debut: null, heure_fin: null, statut, avancement,
     ordre: 0, created_at: '', serie_id: null,
   }
 }

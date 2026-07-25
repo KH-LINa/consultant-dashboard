@@ -65,6 +65,11 @@ function renderProjetHtml(a: AlerteProjet, origin: string): string {
   `
 }
 
+function fmtPeriode(debut: string, fin: string, heureDebut: string | null, heureFin: string | null): string {
+  const heures = heureDebut && heureFin ? ` ${heureDebut.slice(0, 5)}-${heureFin.slice(0, 5)}` : ''
+  return debut === fin ? `${fmt(debut)}${heures}` : `${fmt(debut)} → ${fmt(fin)}${heures}`
+}
+
 function renderConflitsRessourcesHtml(conflits: ConflitRessource[], origin: string): string {
   if (conflits.length === 0) return ''
   return `
@@ -74,8 +79,8 @@ function renderConflitsRessourcesHtml(conflits: ConflitRessource[], origin: stri
         ${conflits.map((c) => `
           <li style="margin-bottom:6px;">
             ${c.type === 'collaborateur' ? 'Collaborateur' : 'Ressource'} <strong>${esc(c.nom)}</strong> affecté(e) en même temps sur :
-            <br/>« ${esc(c.a.itemTitre)} » (<a href="${origin}/projets/${c.a.projetId}" style="color:#534AB7;">${esc(c.a.projetTitre)}</a>, ${fmt(c.a.debut)} → ${fmt(c.a.fin)})
-            <br/>« ${esc(c.b.itemTitre)} » (<a href="${origin}/projets/${c.b.projetId}" style="color:#534AB7;">${esc(c.b.projetTitre)}</a>, ${fmt(c.b.debut)} → ${fmt(c.b.fin)})
+            <br/>« ${esc(c.a.itemTitre)} » (<a href="${origin}/projets/${c.a.projetId}" style="color:#534AB7;">${esc(c.a.projetTitre)}</a>, ${fmtPeriode(c.a.debut, c.a.fin, c.a.heureDebut, c.a.heureFin)})
+            <br/>« ${esc(c.b.itemTitre)} » (<a href="${origin}/projets/${c.b.projetId}" style="color:#534AB7;">${esc(c.b.projetTitre)}</a>, ${fmtPeriode(c.b.debut, c.b.fin, c.b.heureDebut, c.b.heureFin)})
           </li>`).join('')}
       </ul>
     </div>
