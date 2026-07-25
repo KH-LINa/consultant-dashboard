@@ -32,10 +32,11 @@ const NONE = '__none__'
 interface UsersManagerProps {
   profiles: Profile[]
   collaborateurs: { id: string; nom: string; email: string | null }[]
+  resources: { id: string; nom: string; email: string | null }[]
   currentUserId: string
 }
 
-export function UsersManager({ profiles, collaborateurs, currentUserId }: UsersManagerProps) {
+export function UsersManager({ profiles, collaborateurs, resources, currentUserId }: UsersManagerProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [inviting, setInviting] = useState(false)
@@ -44,12 +45,16 @@ export function UsersManager({ profiles, collaborateurs, currentUserId }: UsersM
   const [pendingId, setPendingId] = useState<string | null>(null)
 
   const [form, setForm] = useState({
-    nom: '', email: '', role: 'collaborateur' as UserRole, collaborateur_id: NONE,
+    nom: '', email: '', role: 'collaborateur' as UserRole, collaborateur_id: NONE, resource_id: NONE,
   })
 
   const collaborateurById = Object.fromEntries(collaborateurs.map((c) => [c.id, c]))
   const collaborateursDejaLies = new Set(profiles.map((p) => p.collaborateur_id).filter(Boolean))
   const collaborateursDisponibles = collaborateurs.filter((c) => !collaborateursDejaLies.has(c.id))
+
+  const resourceById = Object.fromEntries(resources.map((r) => [r.id, r]))
+  const resourcesDejaLiees = new Set(profiles.map((p) => p.resource_id).filter(Boolean))
+  const resourcesDisponibles = resources.filter((r) => !resourcesDejaLiees.has(r.id))
 
   async function handleInvite() {
     if (!form.nom.trim() || !form.email.trim()) { toast.error('Nom et email obligatoires'); return }
@@ -63,13 +68,14 @@ export function UsersManager({ profiles, collaborateurs, currentUserId }: UsersM
           email: form.email.trim(),
           role: form.role,
           collaborateur_id: form.role === 'collaborateur' && form.collaborateur_id !== NONE ? form.collaborateur_id : null,
+          resource_id: form.role === 'collaborateur' && form.resource_id !== NONE ? form.resource_id : null,
         }),
       })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error ?? "Échec de l'invitation"); return }
       toast.success(`Invitation envoyée à ${form.email}`)
       setOpen(false)
-      setForm({ nom: '', email: '', role: 'collaborateur', collaborateur_id: NONE })
+      setForm({ nom: '', email: '', role: 'collaborateur', collaborateur_id: NONE, resource_id: NONE })
       router.refresh()
     } finally {
       setInviting(false)
@@ -82,9 +88,9 @@ export function UsersManager({ profiles, collaborateurs, currentUserId }: UsersM
       const res = await fetch(`/api/users/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        // On délie la fiche collaborateur si le rôle change pour autre chose
-        // que "collaborateur" (le lien n'a plus de sens).
-        body: JSON.stringify({ role, ...(role !== 'collaborateur' ? { collaborateur_id: null } : {}) }),
+        // On délie la fiche collaborateur/ressource si le rôle change pour
+        // autre chose que "collaborateur" (le lien n'a plus de sens).
+        body: JSON.stringify({ role, ...(role !== 'collaborateur' ? { collaborateur_id: null, resource_id: null } : {}) }),
       })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error ?? 'Échec de la mise à jour'); return }
@@ -102,6 +108,23 @@ export function UsersManager({ profiles, collaborateurs, currentUserId }: UsersM
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ collaborateur_id: !collaborateurId || collaborateurId === NONE ? null : collaborateurId }),
+      })
+      const data = await res.json()
+      if (!res.ok) { toast.error(data.error ?? 'Échec de la mise à jour'); return }
+      toast.success('Lien mis à jour')
+      router.refresh()
+    } finally {
+      setPendingId(null)
+    }
+  }
+
+  async function updateResourceLink(id: string, resourceId: string | null) {
+    setPendingId(id)
+    try {
+      const res = await fetch(`/api/users/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resource_id: !resourceId || resourceId === NONE ? null : resourceId }),
       })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error ?? 'Échec de la mise à jour'); return }
@@ -187,6 +210,31 @@ export function UsersManager({ profiles, collaborateurs, currentUserId }: UsersM
                   </Select>
                 )}
 
+                {p.role === 'collaborateur' && (
+                  <Select
+                    value={p.resource_id ?? NONE}
+                    onValueChange={(v) => updateResourceLink(p.id, v)}
+                    disabled={busy}
+                  >
+                    <SelectTrigger className="h-8 w-44">
+                      <SelectValue placeholder="Lier à une ressource">
+                        {p.resource_id ? (resourceById[p.resource_id]?.nom ?? '—') : '— Ressource —'}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE}>— Non lié —</SelectItem>
+                      {p.resource_id && !resourceById[p.resource_id] && (
+                        <SelectItem value={p.resource_id} disabled>Fiche introuvable</SelectItem>
+                      )}
+                      {(p.resource_id ? [resourceById[p.resource_id], ...resourcesDisponibles] : resourcesDisponibles)
+                        .filter(Boolean)
+                        .map((r) => (
+                          <SelectItem key={r!.id} value={r!.id}>{r!.nom}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
                 <Button
                   variant="ghost" size="sm"
                   onClick={() => setRevokeId(p.id)}
@@ -245,7 +293,13 @@ export function UsersManager({ profiles, collaborateurs, currentUserId }: UsersM
             {form.role === 'collaborateur' && (
               <div className="space-y-2">
                 <Label>Lier à une fiche collaborateur existante (optionnel)</Label>
-                <Select value={form.collaborateur_id} onValueChange={(v) => setForm((p) => ({ ...p, collaborateur_id: v ?? NONE }))}>
+                <Select
+                  value={form.collaborateur_id}
+                  onValueChange={(v) => setForm((p) => {
+                    const c = v && v !== NONE ? collaborateurById[v] : null
+                    return { ...p, collaborateur_id: v ?? NONE, email: !p.email && c?.email ? c.email : p.email }
+                  })}
+                >
                   <SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value={NONE}>— Aucun —</SelectItem>
@@ -257,6 +311,29 @@ export function UsersManager({ profiles, collaborateurs, currentUserId }: UsersM
                 <p className="text-xs text-gray-400">
                   Si cette personne a déjà une fiche collaborateur (utilisée sur des projets/tâches), la lier lui
                   rend immédiatement visibles les tâches déjà assignées.
+                </p>
+              </div>
+            )}
+            {form.role === 'collaborateur' && (
+              <div className="space-y-2">
+                <Label>Lier à une ressource existante (optionnel)</Label>
+                <Select
+                  value={form.resource_id}
+                  onValueChange={(v) => setForm((p) => {
+                    const r = v && v !== NONE ? resourceById[v] : null
+                    return { ...p, resource_id: v ?? NONE, email: !p.email && r?.email ? r.email : p.email }
+                  })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Aucune" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>— Aucune —</SelectItem>
+                    {resourcesDisponibles.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>{r.nom}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-400">
+                  Reprend l&apos;email de la ressource si le champ email est encore vide.
                 </p>
               </div>
             )}

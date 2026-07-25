@@ -22,7 +22,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   if (guard.error) return guard.error
 
   const body = await request.json().catch(() => null)
-  const update: { role?: UserRole; collaborateur_id?: string | null } = {}
+  const update: { role?: UserRole; collaborateur_id?: string | null; resource_id?: string | null } = {}
 
   if (body?.role !== undefined) {
     if (!ROLES.includes(body.role)) return NextResponse.json({ error: 'Rôle invalide' }, { status: 400 })
@@ -30,6 +30,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
   if (body && 'collaborateur_id' in body) {
     update.collaborateur_id = body.collaborateur_id || null
+  }
+  if (body && 'resource_id' in body) {
+    update.resource_id = body.resource_id || null
   }
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: 'Rien à mettre à jour' }, { status: 400 })

@@ -67,6 +67,7 @@ export interface Profile {
   nom: string
   role: UserRole
   collaborateur_id: string | null
+  resource_id: string | null
   created_at: string
 }
 
@@ -127,6 +128,8 @@ export interface Resource {
   // €/h ; 0 = coût non chiffré (le coût estimé n'utilise alors que le budget)
   cout_horaire: number
   notes: string | null
+  // Ressource humaine : peut préremplir l'invitation d'un compte de connexion.
+  email: string | null
   created_at: string
 }
 

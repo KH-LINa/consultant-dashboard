@@ -43,6 +43,7 @@ export function ResourcesManager({ resources, assignments, projects, unavailabil
   const [nom, setNom] = useState('')
   const [type, setType] = useState<ResourceType>('humain')
   const [coutHoraire, setCoutHoraire] = useState('')
+  const [email, setEmail] = useState('')
   const [adding, setAdding] = useState(false)
 
   // Formulaire d'affectation (par ressource dépliée)
@@ -122,13 +123,14 @@ export function ResourcesManager({ resources, assignments, projects, unavailabil
       nom: nom.trim(),
       type,
       cout_horaire: parseFloat(coutHoraire) || 0,
+      email: type === 'humain' && email.trim() ? email.trim() : null,
     })
     setAdding(false)
     if (error) toast.error(error.message)
-    else { toast.success('Ressource ajoutée'); setNom(''); setCoutHoraire(''); router.refresh() }
+    else { toast.success('Ressource ajoutée'); setNom(''); setCoutHoraire(''); setEmail(''); router.refresh() }
   }
 
-  async function updateResource(id: string, field: string, value: string | number) {
+  async function updateResource(id: string, field: string, value: string | number | null) {
     const { error } = await supabase.from('resources').update({ [field]: value }).eq('id', id)
     if (error) toast.error(error.message); else router.refresh()
   }
@@ -215,6 +217,15 @@ export function ResourcesManager({ resources, assignments, projects, unavailabil
                     }} />
                   <span className="text-xs text-gray-400">€/h</span>
                 </div>
+                {r.type === 'humain' && (
+                  <Input type="email" className="h-8 w-48 text-xs" placeholder="email (pour invitation)"
+                    key={`email-${r.id}-${r.email}`}
+                    defaultValue={r.email ?? ''}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim()
+                      if (v !== (r.email ?? '')) updateResource(r.id, 'email', v || null)
+                    }} />
+                )}
                 <div className="ml-auto flex items-center gap-3 text-xs text-gray-500">
                   {totalHeures > 0 && <span>{totalHeures} h</span>}
                   {coutEstime > 0 && <span className="font-medium text-[#534AB7]">{euros(coutEstime)}</span>}
@@ -414,6 +425,13 @@ export function ResourcesManager({ resources, assignments, projects, unavailabil
             <Input type="number" min="0" step="0.01" value={coutHoraire}
               onChange={(e) => setCoutHoraire(e.target.value)} placeholder="0" className="h-9 text-xs" />
           </div>
+          {type === 'humain' && (
+            <div className="w-48">
+              <label className="text-xs text-gray-500">Email (pour invitation)</label>
+              <Input type="email" value={email}
+                onChange={(e) => setEmail(e.target.value)} placeholder="email@exemple.com" className="h-9 text-xs" />
+            </div>
+          )}
           <Button type="submit" size="sm" disabled={adding || !nom.trim()} className="h-9">
             <Plus className="h-4 w-4 mr-1" />
             Ajouter

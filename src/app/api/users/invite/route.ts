@@ -28,6 +28,7 @@ export async function POST(request: NextRequest) {
   const nom = typeof body?.nom === 'string' ? body.nom.trim() : ''
   const role = body?.role as UserRole
   const collaborateurId = typeof body?.collaborateur_id === 'string' && body.collaborateur_id ? body.collaborateur_id : null
+  const resourceId = typeof body?.resource_id === 'string' && body.resource_id ? body.resource_id : null
 
   if (!email || !nom) return NextResponse.json({ error: 'Email et nom obligatoires' }, { status: 400 })
   if (!ROLES.includes(role)) return NextResponse.json({ error: 'Rôle invalide' }, { status: 400 })
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { error: profileError } = await admin.from('profiles').insert({
-    id: invited.user.id, email, nom, role, collaborateur_id: collaborateurId,
+    id: invited.user.id, email, nom, role, collaborateur_id: collaborateurId, resource_id: resourceId,
   })
 
   if (profileError) {

@@ -10,9 +10,10 @@ export default async function UtilisateursPage() {
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') redirect('/parametres')
 
-  const [{ data: profiles }, { data: collaborateurs }] = await Promise.all([
+  const [{ data: profiles }, { data: collaborateurs }, { data: resources }] = await Promise.all([
     supabase.from('profiles').select('*').order('created_at'),
     supabase.from('collaborateurs').select('id, nom, email').order('nom'),
+    supabase.from('resources').select('id, nom, email').eq('type', 'humain').order('nom'),
   ])
 
   return (
@@ -26,6 +27,7 @@ export default async function UtilisateursPage() {
       <UsersManager
         profiles={profiles ?? []}
         collaborateurs={collaborateurs ?? []}
+        resources={resources ?? []}
         currentUserId={user.id}
       />
     </div>
