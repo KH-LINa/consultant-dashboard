@@ -95,12 +95,12 @@ export function ContactsTable({ contacts }: { contacts: Contact[] }) {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-2">
-                    <Button variant="ghost" size="sm" asChild>
+                    <Button variant="ghost" size="sm" asChild title="Créer un devis">
                       <Link href={`/devis/nouveau?contact_id=${contact.id}`}>
                         <FileText className="h-4 w-4" />
                       </Link>
                     </Button>
-                    <Button variant="ghost" size="sm" asChild>
+                    <Button variant="ghost" size="sm" asChild title="Modifier">
                       <Link href={`/contacts/${contact.id}`}>
                         <Pencil className="h-4 w-4" />
                       </Link>
@@ -110,6 +110,7 @@ export function ContactsTable({ contacts }: { contacts: Contact[] }) {
                       size="sm"
                       onClick={() => setDeleteId(contact.id)}
                       className="text-red-500 hover:text-red-700"
+                      title="Supprimer"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
