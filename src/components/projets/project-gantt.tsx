@@ -677,6 +677,26 @@ export function ProjectGantt({
     return `linear-gradient(to right, ${segments.join(', ')})`
   }, [viewMode, ganttTasks, columnWidth, feries])
 
+  // Position (en px, depuis le début du calendrier) de la colonne du jour —
+  // même reconstruction de plage que fondJoursNonOuvres ci-dessus. null si
+  // aujourd'hui tombe hors de la plage affichée (planning entièrement passé
+  // ou futur par rapport à aujourd'hui).
+  const ligneAujourdhui = useMemo(() => {
+    if (viewMode !== 'Day' || ganttTasks.length === 0) return null
+    const minStart = new Date(Math.min(...ganttTasks.map((t) => t.start.getTime())))
+    const maxEnd = new Date(Math.max(...ganttTasks.map((t) => t.end.getTime())))
+    const debut = new Date(minStart); debut.setHours(0, 0, 0, 0); debut.setDate(debut.getDate() - 1)
+    const fin = new Date(maxEnd); fin.setHours(0, 0, 0, 0); fin.setDate(fin.getDate() + 19)
+    const aujourdhui = new Date(); aujourdhui.setHours(0, 0, 0, 0)
+    if (aujourdhui < debut || aujourdhui > fin) return null
+    const indexJour = Math.round((aujourdhui.getTime() - debut.getTime()) / 86400000)
+    return indexJour * columnWidth
+  }, [viewMode, ganttTasks, columnWidth])
+
+  // headerHeight (50) + rowHeight (50) × nb de lignes — valeurs par défaut de
+  // la lib, non redéfinies via les props du <Gantt> ci-dessous.
+  const hauteurGantt = 50 + ganttTasks.length * 50
+
   const TooltipContent = useMemo(() => {
     const Comp: React.FC<{ task: GanttTask; fontSize: string; fontFamily: string }> = ({ task, fontSize, fontFamily }) => {
       const m = task.id.match(/^(phase|task|ms)_(.+)$/)
@@ -1192,7 +1212,7 @@ export function ProjectGantt({
                 Aucune tâche ne correspond aux filtres.
               </p>
             ) : (
-              <div ref={ganttWrapperRef} className="overflow-x-auto border rounded-lg gantt-print-area">
+              <div ref={ganttWrapperRef} className="relative overflow-x-auto border rounded-lg gantt-print-area">
                 <Gantt
                   tasks={ganttTasks}
                   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
@@ -1208,9 +1228,20 @@ export function ProjectGantt({
                   listCellWidth="220px"
                   columnWidth={columnWidth}
                   barCornerRadius={4}
-                  todayColor="rgba(83,74,183,0.10)"
+                  todayColor="rgba(245,158,11,0.20)"
                   arrowColor={COULEUR_FLECHE_TACHE}
                 />
+                {/* Trait "aujourd'hui" peint PAR-DESSUS les barres (le fond
+                    todayColor de la lib est un rect en arrière-plan, invisible
+                    dès qu'une barre de tâche le recouvre) — même logique de
+                    reconstruction de plage que fondJoursNonOuvres ci-dessus. */}
+                {ligneAujourdhui !== null && (
+                  <div
+                    className="absolute top-0 z-10 w-0.5 -translate-x-1/2 bg-amber-500 pointer-events-none"
+                    style={{ left: 220 + ligneAujourdhui + columnWidth / 2, height: hauteurGantt }}
+                    title="Aujourd'hui"
+                  />
+                )}
               </div>
             )}
             {conflicts.length > 0 && (
