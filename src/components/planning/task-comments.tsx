@@ -13,15 +13,18 @@ function fmtDateHeure(iso: string): string {
 }
 
 // Fil de commentaires d'une tâche — repliable pour ne pas alourdir les
-// listes de tâches par défaut ; chargé à la demande (pas de fetch tant que
-// l'utilisateur ne déplie pas).
-export function TaskComments({ taskId }: { taskId: string }) {
+// listes de tâches par défaut ; le contenu est chargé à la demande (pas de
+// fetch tant que l'utilisateur ne déplie pas), mais initialCount (compté en
+// amont côté serveur) permet d'afficher le nombre de commentaires dès le
+// chargement de la page, sans avoir à dépiler chaque tâche pour le savoir.
+export function TaskComments({ taskId, initialCount = 0 }: { taskId: string; initialCount?: number }) {
   const supabase = createClient()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [comments, setComments] = useState<TaskComment[] | null>(null)
   const [texte, setTexte] = useState('')
   const [sending, setSending] = useState(false)
+  const count = comments ? comments.length : initialCount
 
   async function toggle() {
     if (open) { setOpen(false); return }
@@ -58,7 +61,7 @@ export function TaskComments({ taskId }: { taskId: string }) {
     <div className="border-t pt-2 mt-2">
       <button type="button" onClick={toggle} className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600">
         <MessageSquare className="h-3.5 w-3.5" />
-        Commentaires{comments && comments.length > 0 ? ` (${comments.length})` : ''}
+        Commentaires{count > 0 ? ` (${count})` : ''}
         {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
       </button>
       {open && (

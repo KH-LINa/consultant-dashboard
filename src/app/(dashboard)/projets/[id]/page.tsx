@@ -52,6 +52,17 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
     ? await supabase.from('task_dependencies').select('*').in('predecessor_id', taskIds)
     : { data: [] }
 
+  // Nombre de commentaires par tâche — préchargé pour afficher "Commentaires
+  // (n)" sans avoir à dépiler chaque tâche pour repérer celles où un
+  // collaborateur a expliqué un retard ou un blocage.
+  const { data: commentsData } = taskIds.length
+    ? await supabase.from('task_comments').select('task_id').in('task_id', taskIds)
+    : { data: [] }
+  const commentCounts = (commentsData ?? []).reduce<Record<string, number>>((acc, c) => {
+    acc[c.task_id] = (acc[c.task_id] ?? 0) + 1
+    return acc
+  }, {})
+
   // Dépendances entre les PHASES de ce projet (distinctes des dépendances
   // entre tâches ci-dessus — même modèle FD/DD/FF/DF + délai, mais reliant
   // des project_phases entre elles).
@@ -180,6 +191,7 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
         tasks={tasksList}
         phases={phases ?? []}
         collaborateurs={collaborateurs ?? []}
+        commentCounts={commentCounts}
       />
       <DependenciesManager projectId={project.id} tasks={tasksList} dependencies={dependencies ?? []} />
 

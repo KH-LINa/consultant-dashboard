@@ -38,11 +38,12 @@ function fmt(iso: string | null): string {
 }
 
 export function MonPlanningView({
-  tasks, missions, assignments,
+  tasks, missions, assignments, commentCounts = {},
 }: {
   tasks: TacheAvecProjet[]
   missions: Mission[]
   assignments: ResourceAssignment[]
+  commentCounts?: Record<string, number>
 }) {
   const router = useRouter()
   const supabase = createClient()
@@ -219,7 +220,7 @@ export function MonPlanningView({
                       <span className="text-xs text-gray-400">%</span>
                     </div>
                   </div>
-                  <TaskComments taskId={t.id} />
+                  <TaskComments taskId={t.id} initialCount={commentCounts[t.id] ?? 0} />
                 </div>
               )
             })}

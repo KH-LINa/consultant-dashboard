@@ -31,9 +31,13 @@ interface TasksManagerProps {
   tasks: ProjectTask[]
   phases: ProjectPhase[]
   collaborateurs: Collaborateur[]
+  // Nombre de commentaires par tâche, préchargé côté serveur — permet
+  // d'afficher "Commentaires (n)" immédiatement, sans devoir dépiler chaque
+  // tâche pour savoir si le collaborateur a laissé une explication.
+  commentCounts?: Record<string, number>
 }
 
-export function TasksManager({ projectId, tasks, phases, collaborateurs }: TasksManagerProps) {
+export function TasksManager({ projectId, tasks, phases, collaborateurs, commentCounts = {} }: TasksManagerProps) {
   const router = useRouter()
   const supabase = createClient()
   const [titre, setTitre] = useState('')
@@ -214,7 +218,7 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs }: Tasks
                   <span className="text-xs text-gray-400">%</span>
                 </div>
               </div>
-              <TaskComments taskId={t.id} />
+              <TaskComments taskId={t.id} initialCount={commentCounts[t.id] ?? 0} />
             </div>
           )
         })}

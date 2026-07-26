@@ -61,6 +61,17 @@ export default async function MonPlanningPage() {
 
   const mesTaches = ((tasks ?? []) as ProjectTask[]).map((t) => ({ id: t.id, titre: t.titre }))
 
+  // Nombre de commentaires par tâche — préchargé pour afficher "Commentaires
+  // (n)" sans avoir à dépiler chaque tâche (ex. réponse d'un manager).
+  const taskIds = mesTaches.map((t) => t.id)
+  const { data: commentsData } = taskIds.length
+    ? await supabase.from('task_comments').select('task_id').in('task_id', taskIds)
+    : { data: [] }
+  const commentCounts = (commentsData ?? []).reduce<Record<string, number>>((acc, c) => {
+    acc[c.task_id] = (acc[c.task_id] ?? 0) + 1
+    return acc
+  }, {})
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -74,6 +85,7 @@ export default async function MonPlanningPage() {
         tasks={(tasks ?? []) as (ProjectTask & { project: { id: string; titre: string } | null })[]}
         missions={(missions ?? []) as Mission[]}
         assignments={(assignments ?? []) as ResourceAssignment[]}
+        commentCounts={commentCounts}
       />
     </div>
   )
