@@ -7,6 +7,9 @@ import type { UserRole } from '@/lib/types'
 
 const ROLES: UserRole[] = ['admin', 'manager', 'collaborateur']
 
+// Palette identique à celle du gestionnaire de collaborateurs (couleur d'affichage).
+const COULEURS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#64748b']
+
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -46,13 +49,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: inviteError?.message ?? "Échec de l'invitation" }, { status: 400 })
   }
 
+  // Pour un Collaborateur non rattaché à une fiche existante, on crée
+  // automatiquement sa fiche collaborateur (même nom/email) et on la lie —
+  // ainsi il apparaît tout de suite comme responsable assignable, sans avoir
+  // à créer la fiche à la main depuis un projet. user_id explicite : le client
+  // service_role n'a pas d'auth.uid() pour le default de la colonne.
+  let finalCollaborateurId = collaborateurId
+  let collaborateurCree = false
+  if (role === 'collaborateur' && !collaborateurId) {
+    const { data: newCollab, error: collabError } = await admin.from('collaborateurs')
+      .insert({ nom, email, couleur: COULEURS[Math.floor(Math.random() * COULEURS.length)], user_id: user.id })
+      .select('id').single()
+    if (collabError || !newCollab) {
+      await admin.auth.admin.deleteUser(invited.user.id)
+      return NextResponse.json({ error: collabError?.message ?? 'Échec de la création de la fiche collaborateur' }, { status: 400 })
+    }
+    finalCollaborateurId = newCollab.id
+    collaborateurCree = true
+  }
+
   const { error: profileError } = await admin.from('profiles').insert({
-    id: invited.user.id, email, nom, role, collaborateur_id: collaborateurId, resource_id: resourceId,
+    id: invited.user.id, email, nom, role, collaborateur_id: finalCollaborateurId, resource_id: resourceId,
   })
 
   if (profileError) {
-    // Ne pas laisser un compte Auth orphelin (sans profil) si l'insert échoue.
+    // Ne pas laisser un compte Auth orphelin (ni une fiche collaborateur
+    // orpheline) si l'insert du profil échoue.
     await admin.auth.admin.deleteUser(invited.user.id)
+    if (collaborateurCree && finalCollaborateurId) {
+      await admin.from('collaborateurs').delete().eq('id', finalCollaborateurId)
+    }
     return NextResponse.json({ error: profileError.message }, { status: 400 })
   }
 

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import type { Profile, UserRole } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -28,6 +29,8 @@ const ROLE_BADGE: Record<UserRole, string> = {
 }
 
 const NONE = '__none__'
+const CREATE = '__create__'
+const COULEURS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#64748b']
 
 interface UsersManagerProps {
   profiles: Profile[]
@@ -38,6 +41,7 @@ interface UsersManagerProps {
 
 export function UsersManager({ profiles, collaborateurs, resources, currentUserId }: UsersManagerProps) {
   const router = useRouter()
+  const supabase = createClient()
   const [open, setOpen] = useState(false)
   const [inviting, setInviting] = useState(false)
   const [revokeId, setRevokeId] = useState<string | null>(null)
@@ -118,6 +122,30 @@ export function UsersManager({ profiles, collaborateurs, resources, currentUserI
     }
   }
 
+  // Crée une fiche collaborateur au nom du compte puis la lie — pour un compte
+  // déjà invité sans fiche (l'insert passe par la session admin : la RLS
+  // autorise le staff à créer un collaborateur).
+  async function createAndLinkCollaborateur(p: Profile) {
+    setPendingId(p.id)
+    try {
+      const { data: newCollab, error } = await supabase.from('collaborateurs')
+        .insert({ nom: p.nom, email: p.email, couleur: COULEURS[Math.floor(Math.random() * COULEURS.length)] })
+        .select('id').single()
+      if (error || !newCollab) { toast.error(error?.message ?? 'Échec de la création'); return }
+      const res = await fetch(`/api/users/${p.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ collaborateur_id: newCollab.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) { toast.error(data.error ?? 'Échec de la mise à jour'); return }
+      toast.success(`Fiche « ${p.nom} » créée et liée`)
+      router.refresh()
+    } finally {
+      setPendingId(null)
+    }
+  }
+
   async function updateResourceLink(id: string, resourceId: string | null) {
     setPendingId(id)
     try {
@@ -188,7 +216,10 @@ export function UsersManager({ profiles, collaborateurs, resources, currentUserI
                 {p.role === 'collaborateur' && (
                   <Select
                     value={p.collaborateur_id ?? NONE}
-                    onValueChange={(v) => updateCollaborateurLink(p.id, v)}
+                    onValueChange={(v) => {
+                      if (v === CREATE) createAndLinkCollaborateur(p)
+                      else updateCollaborateurLink(p.id, v)
+                    }}
                     disabled={busy}
                   >
                     <SelectTrigger className="h-8 w-44">
@@ -198,6 +229,9 @@ export function UsersManager({ profiles, collaborateurs, resources, currentUserI
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={NONE}>— Non lié —</SelectItem>
+                      {!p.collaborateur_id && (
+                        <SelectItem value={CREATE}>+ Créer une fiche « {p.nom} »</SelectItem>
+                      )}
                       {p.collaborateur_id && !collaborateurById[p.collaborateur_id] && (
                         <SelectItem value={p.collaborateur_id} disabled>Fiche introuvable</SelectItem>
                       )}
@@ -292,7 +326,7 @@ export function UsersManager({ profiles, collaborateurs, resources, currentUserI
             </div>
             {form.role === 'collaborateur' && (
               <div className="space-y-2">
-                <Label>Lier à une fiche collaborateur existante (optionnel)</Label>
+                <Label>Rattacher à une fiche collaborateur existante (optionnel)</Label>
                 <Select
                   value={form.collaborateur_id}
                   onValueChange={(v) => setForm((p) => {
@@ -300,17 +334,18 @@ export function UsersManager({ profiles, collaborateurs, resources, currentUserI
                     return { ...p, collaborateur_id: v ?? NONE, email: !p.email && c?.email ? c.email : p.email }
                   })}
                 >
-                  <SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Créer une nouvelle fiche" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NONE}>— Aucun —</SelectItem>
+                    <SelectItem value={NONE}>+ Créer une nouvelle fiche à son nom</SelectItem>
                     {collaborateursDisponibles.map((c) => (
                       <SelectItem key={c.id} value={c.id}>{c.nom}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-400">
-                  Si cette personne a déjà une fiche collaborateur (utilisée sur des projets/tâches), la lier lui
-                  rend immédiatement visibles les tâches déjà assignées.
+                  Par défaut, une fiche collaborateur est <strong>créée automatiquement</strong> à son nom (il devient
+                  alors assignable sur les projets/tâches). Choisis une fiche existante seulement si cette personne
+                  est <strong>déjà</strong> dans tes projets sous un autre nom — elle verra alors les tâches déjà assignées à cette fiche.
                 </p>
               </div>
             )}
