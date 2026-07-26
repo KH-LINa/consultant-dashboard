@@ -138,60 +138,62 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs, comment
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
-              <div className="grid grid-cols-12 gap-2 items-center">
-                {/* Phase */}
-                <div className="col-span-3 min-w-0">
-                  <Select value={t.phase_id ?? NONE}
-                    onValueChange={(v) => update(t.id, 'phase_id', v === NONE ? null : v)}>
-                    <SelectTrigger className="h-8 w-full min-w-0 text-xs">
-                      <SelectValue className="truncate min-w-0">
-                        {(v: string) => (v === NONE ? '— Aucune phase —' : phaseById[v]?.titre ?? 'Phase')}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>— Aucune phase —</SelectItem>
-                      {phases.map((p) => <SelectItem key={p.id} value={p.id}>{p.titre}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {/* Responsable */}
-                <div className="col-span-3 min-w-0">
-                  <Select value={t.responsable_id ?? NONE}
-                    onValueChange={(v) => update(t.id, 'responsable_id', v === NONE ? null : v)}>
-                    <SelectTrigger className="h-8 w-full min-w-0 text-xs">
-                      <SelectValue className="truncate min-w-0">
-                        {(v: string) => (v === NONE ? '— Non assigné —' : collabById[v]?.nom ?? 'Responsable')}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>— Non assigné —</SelectItem>
-                      {collaborateurs.map((c) => <SelectItem key={c.id} value={c.id}>{c.nom}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {/* Dates */}
-                <Input type="date" className="col-span-2 h-8 text-xs" defaultValue={t.date_debut ?? ''}
-                  onChange={(e) => update(t.id, 'date_debut', e.target.value || null)} />
-                <Input type="date" className="col-span-2 h-8 text-xs" defaultValue={t.date_fin ?? ''}
-                  onChange={(e) => update(t.id, 'date_fin', e.target.value || null)} />
-                {/* Statut */}
-                <div className="col-span-2 min-w-0">
-                  <Select value={t.statut}
-                    onValueChange={(v) => updateStatut(t.id, v as ProjectTaskStatus, t.avancement)}>
-                    <SelectTrigger className="h-8 w-full min-w-0 text-xs">
-                      <SelectValue className="truncate min-w-0">
-                        {(v: string) => statutLabel[v as ProjectTaskStatus] ?? v}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(statutLabel) as ProjectTaskStatus[]).map((s) => (
-                        <SelectItem key={s} value={s}>{statutLabel[s]}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <div className="overflow-x-auto">
+                <div className="grid grid-cols-12 gap-2 items-center min-w-[520px]">
+                  {/* Phase */}
+                  <div className="col-span-3 min-w-0">
+                    <Select value={t.phase_id ?? NONE}
+                      onValueChange={(v) => update(t.id, 'phase_id', v === NONE ? null : v)}>
+                      <SelectTrigger className="h-8 w-full min-w-0 text-xs">
+                        <SelectValue className="truncate min-w-0">
+                          {(v: string) => (v === NONE ? '— Aucune phase —' : phaseById[v]?.titre ?? 'Phase')}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE}>— Aucune phase —</SelectItem>
+                        {phases.map((p) => <SelectItem key={p.id} value={p.id}>{p.titre}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {/* Responsable */}
+                  <div className="col-span-3 min-w-0">
+                    <Select value={t.responsable_id ?? NONE}
+                      onValueChange={(v) => update(t.id, 'responsable_id', v === NONE ? null : v)}>
+                      <SelectTrigger className="h-8 w-full min-w-0 text-xs">
+                        <SelectValue className="truncate min-w-0">
+                          {(v: string) => (v === NONE ? '— Non assigné —' : collabById[v]?.nom ?? 'Responsable')}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE}>— Non assigné —</SelectItem>
+                        {collaborateurs.map((c) => <SelectItem key={c.id} value={c.id}>{c.nom}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {/* Dates */}
+                  <Input type="date" className="col-span-2 h-8 text-xs" defaultValue={t.date_debut ?? ''}
+                    onChange={(e) => update(t.id, 'date_debut', e.target.value || null)} />
+                  <Input type="date" className="col-span-2 h-8 text-xs" defaultValue={t.date_fin ?? ''}
+                    onChange={(e) => update(t.id, 'date_fin', e.target.value || null)} />
+                  {/* Statut */}
+                  <div className="col-span-2 min-w-0">
+                    <Select value={t.statut}
+                      onValueChange={(v) => updateStatut(t.id, v as ProjectTaskStatus, t.avancement)}>
+                      <SelectTrigger className="h-8 w-full min-w-0 text-xs">
+                        <SelectValue className="truncate min-w-0">
+                          {(v: string) => statutLabel[v as ProjectTaskStatus] ?? v}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(statutLabel) as ProjectTaskStatus[]).map((s) => (
+                          <SelectItem key={s} value={s}>{statutLabel[s]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {resp && (
                   <span className="flex items-center gap-1 text-xs text-gray-500">
                     <span className="w-2.5 h-2.5 rounded-full" style={{ background: resp.couleur }} />
@@ -206,7 +208,7 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs, comment
                   <Input type="time" className="h-8 w-28 text-xs" defaultValue={t.heure_fin ?? ''}
                     onChange={(e) => update(t.id, 'heure_fin', e.target.value || null)} />
                 </div>
-                <div className="flex items-center gap-2 ml-auto">
+                <div className="flex items-center gap-2 sm:ml-auto">
                   <span className="text-xs text-gray-400">Avancement</span>
                   <Input type="number" min="0" max="100" className="h-8 w-16 text-xs text-right"
                     key={`av-${t.id}-${t.avancement}`}

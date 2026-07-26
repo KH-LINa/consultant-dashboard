@@ -58,39 +58,45 @@ export function PhasesManager({ projectId, phases, tasks }: { projectId: string;
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        {phases.length > 0 && (
-          <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-500 px-1">
-            <span className="col-span-3">Titre</span>
-            <span className="col-span-3">Début</span>
-            <span className="col-span-3">Fin</span>
-            <span className="col-span-2" title="Statut calculé automatiquement à partir des tâches de la phase">Statut</span>
-            <span className="col-span-1" />
+        {/* Défile horizontalement sur petit écran plutôt que d'écraser les
+            champs (chaque colonne garde une largeur lisible via min-w). */}
+        <div className="overflow-x-auto">
+          <div className="min-w-[560px] space-y-2">
+            {phases.length > 0 && (
+              <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-500 px-1">
+                <span className="col-span-3">Titre</span>
+                <span className="col-span-3">Début</span>
+                <span className="col-span-3">Fin</span>
+                <span className="col-span-2" title="Statut calculé automatiquement à partir des tâches de la phase">Statut</span>
+                <span className="col-span-1" />
+              </div>
+            )}
+            {phases.map((p) => {
+              const statut = phaseStatus(tasks, p.id)
+              return (
+                <div key={p.id} className="grid grid-cols-12 gap-2 items-center group">
+                  <Input className="col-span-3 h-9" defaultValue={p.titre}
+                    onBlur={(e) => e.target.value !== p.titre && update(p.id, 'titre', e.target.value)} />
+                  <Input type="date" className="col-span-3 h-9" defaultValue={p.date_debut ?? ''}
+                    onChange={(e) => update(p.id, 'date_debut', e.target.value || null)} />
+                  <Input type="date" className="col-span-3 h-9" defaultValue={p.date_fin ?? ''}
+                    onChange={(e) => update(p.id, 'date_fin', e.target.value || null)} />
+                  <span
+                    title="Statut calculé automatiquement à partir des tâches de la phase (non modifiable ici)"
+                    className={`col-span-2 text-xs px-2 py-1 rounded-full text-center truncate ${statutStyle[statut]}`}
+                  >
+                    {statutLabel[statut]}
+                  </span>
+                  <Button variant="ghost" size="sm"
+                    onClick={() => remove(p.id)}
+                    className="col-span-1 h-9 w-9 p-0 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              )
+            })}
           </div>
-        )}
-        {phases.map((p) => {
-          const statut = phaseStatus(tasks, p.id)
-          return (
-            <div key={p.id} className="grid grid-cols-12 gap-2 items-center group">
-              <Input className="col-span-3 h-9" defaultValue={p.titre}
-                onBlur={(e) => e.target.value !== p.titre && update(p.id, 'titre', e.target.value)} />
-              <Input type="date" className="col-span-3 h-9" defaultValue={p.date_debut ?? ''}
-                onChange={(e) => update(p.id, 'date_debut', e.target.value || null)} />
-              <Input type="date" className="col-span-3 h-9" defaultValue={p.date_fin ?? ''}
-                onChange={(e) => update(p.id, 'date_fin', e.target.value || null)} />
-              <span
-                title="Statut calculé automatiquement à partir des tâches de la phase (non modifiable ici)"
-                className={`col-span-2 text-xs px-2 py-1 rounded-full text-center truncate ${statutStyle[statut]}`}
-              >
-                {statutLabel[statut]}
-              </span>
-              <Button variant="ghost" size="sm"
-                onClick={() => remove(p.id)}
-                className="col-span-1 h-9 w-9 p-0 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100">
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          )
-        })}
+        </div>
         <form onSubmit={addPhase} className="flex gap-2 pt-2 border-t">
           <Input value={titre} onChange={(e) => setTitre(e.target.value)} placeholder="Nouvelle phase (ex: Cadrage)" className="h-9" />
           <Button type="submit" size="sm" disabled={adding || !titre.trim()}><Plus className="h-4 w-4" /></Button>

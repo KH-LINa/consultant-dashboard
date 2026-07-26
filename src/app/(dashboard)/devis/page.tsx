@@ -13,7 +13,7 @@ export default async function DevisPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Devis</h1>
           <p className="text-gray-500 mt-1">{quotes?.length ?? 0} devis</p>

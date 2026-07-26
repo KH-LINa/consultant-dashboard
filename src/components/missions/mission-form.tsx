@@ -148,7 +148,7 @@ export function MissionForm({
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Statut</Label>
               <Select value={form.statut} onValueChange={(v) => setForm((p) => ({ ...p, statut: v as MissionStatus }))}>
@@ -169,7 +169,7 @@ export function MissionForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Date de début</Label>
               <Input type="date" value={form.date_debut}

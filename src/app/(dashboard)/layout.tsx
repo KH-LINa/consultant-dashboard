@@ -1,8 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { Sidebar } from '@/components/layout/sidebar'
-import { NotificationsBell } from '@/components/layout/notifications-bell'
-import { Toaster } from '@/components/ui/sonner'
+import { DashboardShell } from '@/components/layout/dashboard-shell'
 import type { Notification } from '@/lib/types'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -19,17 +17,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   ])
 
   return (
-    <div className="flex min-h-screen">
-      <Sidebar role={profile?.role ?? null} nom={profile?.nom ?? null} email={user.email ?? null} />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-end border-b bg-white px-6 py-2.5">
-          <NotificationsBell initial={(notifications ?? []) as Notification[]} />
-        </header>
-        <main className="flex-1 overflow-auto bg-gray-50 p-8">
-          {children}
-        </main>
-      </div>
-      <Toaster richColors />
-    </div>
+    <DashboardShell
+      role={profile?.role ?? null}
+      nom={profile?.nom ?? null}
+      email={user.email ?? null}
+      notifications={(notifications ?? []) as Notification[]}
+    >
+      {children}
+    </DashboardShell>
   )
 }

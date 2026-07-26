@@ -112,7 +112,7 @@ export function CreateMissionButton({
                 onChange={(e) => setForm((p) => ({ ...p, titre: e.target.value }))} />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Responsable</Label>
                 <Select value={form.responsable_id}
@@ -149,7 +149,7 @@ export function CreateMissionButton({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Date de début</Label>
                 <Input type="date" value={form.date_debut}

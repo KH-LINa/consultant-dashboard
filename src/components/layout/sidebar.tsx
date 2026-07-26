@@ -22,6 +22,7 @@ import {
   FileSignature,
   HardHat,
   CalendarDays,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { UserRole } from '@/lib/types'
@@ -61,9 +62,12 @@ interface SidebarProps {
   role: UserRole | null
   nom: string | null
   email: string | null
+  // Ferme le tiroir mobile après un clic sur un lien (sans effet en desktop,
+  // où la sidebar est toujours visible) — voir DashboardShell.
+  onNavigate?: () => void
 }
 
-export function Sidebar({ role, nom, email }: SidebarProps) {
+export function Sidebar({ role, nom, email, onNavigate }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
@@ -77,10 +81,20 @@ export function Sidebar({ role, nom, email }: SidebarProps) {
   }
 
   return (
-    <aside className="flex flex-col w-64 min-h-screen bg-gray-900 text-white p-4">
-      <div className="flex items-center gap-2 mb-8 px-2">
-        <Briefcase className="h-6 w-6 text-blue-400" />
-        <span className="font-bold text-lg">Consultant IA</span>
+    <aside className="flex flex-col w-64 h-full min-h-screen bg-gray-900 text-white p-4 overflow-y-auto">
+      <div className="flex items-center justify-between gap-2 mb-8 px-2">
+        <div className="flex items-center gap-2">
+          <Briefcase className="h-6 w-6 text-blue-400" />
+          <span className="font-bold text-lg">Consultant IA</span>
+        </div>
+        <button
+          type="button"
+          onClick={onNavigate}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white lg:hidden"
+          aria-label="Fermer le menu"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
 
       <nav className="flex-1 space-y-1">
@@ -88,6 +102,7 @@ export function Sidebar({ role, nom, email }: SidebarProps) {
           <Link
             key={href}
             href={href}
+            onClick={onNavigate}
             className={cn(
               'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
               pathname === href || pathname.startsWith(href + '/')

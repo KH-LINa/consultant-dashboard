@@ -38,7 +38,7 @@ export default async function ContratsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Contrats</h1>
           <p className="text-gray-500 mt-1">{contracts?.length ?? 0} contrat{(contracts?.length ?? 0) !== 1 ? 's' : ''}</p>

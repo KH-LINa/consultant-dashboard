@@ -54,7 +54,7 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
           <CardDescription>Ces informations apparaissent sur vos devis et factures PDF</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Nom complet *</Label>
               <Input value={form.consultant_nom} onChange={(e) => set('consultant_nom', e.target.value)} placeholder="Jean Dupont" />
@@ -64,7 +64,7 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
               <Input value={form.consultant_siret} onChange={(e) => set('consultant_siret', e.target.value)} placeholder="123 456 789 00012" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Email professionnel</Label>
               <Input type="email" value={form.consultant_email} onChange={(e) => set('consultant_email', e.target.value)} placeholder="jean@consultant-ia.fr" />
@@ -155,7 +155,7 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
           <CardDescription>Paramètres utilisés pour les estimations URSSAF dans le bilan</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Taux de cotisation URSSAF (%)</Label>
               <Input

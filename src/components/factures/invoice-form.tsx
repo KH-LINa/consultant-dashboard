@@ -129,7 +129,7 @@ export function InvoiceForm({
     <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
       <Card>
         <CardHeader><CardTitle>Informations générales</CardTitle></CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4">
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2 col-span-2">
             <Label>Contact *</Label>
             <Select value={form.contact_id} onValueChange={(v) => setForm((p) => ({ ...p, contact_id: v ?? '' }))}>
@@ -218,26 +218,30 @@ export function InvoiceForm({
           </Button>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-500 pb-1">
-            <span className="col-span-6">Description</span>
-            <span className="col-span-2 text-center">Quantité</span>
-            <span className="col-span-3 text-right">Prix unitaire HT</span>
-            <span className="col-span-1" />
-          </div>
-          {lignes.map((l, idx) => (
-            <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-              <Input className="col-span-6" placeholder="Description" value={l.description}
-                onChange={(e) => updateLigne(idx, 'description', e.target.value)} />
-              <Input className="col-span-2 text-center" type="number" min="0" step="0.5" value={l.quantite}
-                onChange={(e) => updateLigne(idx, 'quantite', parseFloat(e.target.value) || 0)} />
-              <Input className="col-span-3 text-right" type="number" min="0" step="50" value={l.prix_unitaire}
-                onChange={(e) => updateLigne(idx, 'prix_unitaire', parseFloat(e.target.value) || 0)} />
-              <Button type="button" variant="ghost" size="sm" className="col-span-1 text-red-400 hover:text-red-600"
-                onClick={() => setLignes((p) => p.filter((_, i) => i !== idx))} disabled={lignes.length === 1}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
+          <div className="overflow-x-auto">
+            <div className="min-w-[520px] space-y-3">
+              <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-500 pb-1">
+                <span className="col-span-6">Description</span>
+                <span className="col-span-2 text-center">Quantité</span>
+                <span className="col-span-3 text-right">Prix unitaire HT</span>
+                <span className="col-span-1" />
+              </div>
+              {lignes.map((l, idx) => (
+                <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                  <Input className="col-span-6" placeholder="Description" value={l.description}
+                    onChange={(e) => updateLigne(idx, 'description', e.target.value)} />
+                  <Input className="col-span-2 text-center" type="number" min="0" step="0.5" value={l.quantite}
+                    onChange={(e) => updateLigne(idx, 'quantite', parseFloat(e.target.value) || 0)} />
+                  <Input className="col-span-3 text-right" type="number" min="0" step="50" value={l.prix_unitaire}
+                    onChange={(e) => updateLigne(idx, 'prix_unitaire', parseFloat(e.target.value) || 0)} />
+                  <Button type="button" variant="ghost" size="sm" className="col-span-1 text-red-400 hover:text-red-600"
+                    onClick={() => setLignes((p) => p.filter((_, i) => i !== idx))} disabled={lignes.length === 1}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
           <Separator />
           <div className="flex justify-end">
             <div className="text-right">

@@ -147,7 +147,7 @@ export function ProjectForm({ contacts, collaborateurs, defaultContactId }: Proj
               placeholder="ex: Déploiement d'un assistant IA support client" required />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Date de début</Label>
               <Input type="date" value={form.date_debut}
@@ -160,7 +160,7 @@ export function ProjectForm({ contacts, collaborateurs, defaultContactId }: Proj
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Statut</Label>
               <Select value={form.statut} onValueChange={(v) => setForm((p) => ({ ...p, statut: v as ProjectStatus }))}>
