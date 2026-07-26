@@ -22,7 +22,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <div className="flex min-h-screen">
       <Sidebar role={profile?.role ?? null} nom={profile?.nom ?? null} email={user.email ?? null} />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-end border-b bg-white px-6 py-2">
+        <header className="flex items-center justify-end border-b bg-white px-6 py-2.5">
           <NotificationsBell initial={(notifications ?? []) as Notification[]} />
         </header>
         <main className="flex-1 overflow-auto bg-gray-50 p-8">

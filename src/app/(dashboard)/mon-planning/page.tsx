@@ -39,7 +39,7 @@ export default async function MonPlanningPage() {
     profile.collaborateur_id
       ? supabase
           .from('project_tasks')
-          .select('*, project:projects(titre)')
+          .select('*, project:projects(id, titre)')
           .eq('responsable_id', profile.collaborateur_id)
           .order('date_fin', { ascending: true, nullsFirst: false })
       : Promise.resolve({ data: [] }),
@@ -65,7 +65,7 @@ export default async function MonPlanningPage() {
         <p className="text-gray-500 mt-1">Bonjour {profile.nom} — vos tâches et missions, tous projets confondus</p>
       </div>
       <MonPlanningView
-        tasks={(tasks ?? []) as (ProjectTask & { project: { titre: string } | null })[]}
+        tasks={(tasks ?? []) as (ProjectTask & { project: { id: string; titre: string } | null })[]}
         missions={(missions ?? []) as Mission[]}
         assignments={(assignments ?? []) as ResourceAssignment[]}
       />

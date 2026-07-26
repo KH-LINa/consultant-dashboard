@@ -7,7 +7,7 @@ import type { Notification } from '@/lib/types'
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import { Bell, UserPlus, CalendarClock } from 'lucide-react'
+import { Bell, BellRing, UserPlus, CalendarClock } from 'lucide-react'
 
 const TYPE_ICON = {
   tache_assignee: UserPlus,
@@ -63,13 +63,15 @@ export function NotificationsBell({ initial }: { initial: Notification[] }) {
   return (
     <DropdownMenu onOpenChange={(open) => { if (open) refresh() }}>
       <DropdownMenuTrigger
-        className="relative flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+        className={`relative flex h-11 w-11 items-center justify-center rounded-full transition-colors ${
+          unread > 0 ? 'text-blue-600 hover:bg-blue-50' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+        }`}
         aria-label="Notifications"
       >
-        <Bell className="h-5 w-5" />
+        {unread > 0 ? <BellRing className="h-6 w-6" /> : <Bell className="h-6 w-6" />}
         {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
-            {unread > 9 ? '9+' : unread}
+          <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-[11px] font-bold leading-none text-white ring-2 ring-white animate-pulse">
+            {unread > 99 ? '99+' : unread}
           </span>
         )}
       </DropdownMenuTrigger>

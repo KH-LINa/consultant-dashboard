@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { ProjectTask, ProjectTaskStatus, Mission, ResourceAssignment } from '@/lib/types'
@@ -11,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { ChevronLeft, ChevronRight, ListChecks, FolderKanban, HardHat } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ListChecks, FolderKanban, HardHat, FolderOpen } from 'lucide-react'
 import { toast } from 'sonner'
 
 const STATUT_LABEL: Record<ProjectTaskStatus, string> = {
@@ -29,7 +30,7 @@ const STATUT_DOT: Record<ProjectTaskStatus, string> = {
 
 const JOURS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 
-type TacheAvecProjet = ProjectTask & { project: { titre: string } | null }
+type TacheAvecProjet = ProjectTask & { project: { id: string; titre: string } | null }
 
 function fmt(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
@@ -77,6 +78,13 @@ export function MonPlanningView({
 
   const aujourdHui = toLocalISO(new Date())
   const tachesTriees = [...tasks].sort((a, b) => (a.date_fin ?? '9999').localeCompare(b.date_fin ?? '9999'))
+
+  const projets = useMemo(() => {
+    const parId = new Map<string, string>()
+    for (const t of tasks) if (t.project) parId.set(t.project.id, t.project.titre)
+    for (const a of assignments) if (a.project) parId.set(a.project.id, a.project.titre)
+    return Array.from(parId, ([id, titre]) => ({ id, titre })).sort((a, b) => a.titre.localeCompare(b.titre))
+  }, [tasks, assignments])
 
   return (
     <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
@@ -132,6 +140,32 @@ export function MonPlanningView({
       </Card>
 
       <div className="space-y-6">
+        {projets.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <FolderOpen className="h-4 w-4 text-amber-500" />
+                Mes projets ({projets.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1.5">
+              {projets.map((p) => (
+                <Link
+                  key={p.id}
+                  href={`/mon-planning/projets/${p.id}`}
+                  className="border rounded-lg p-3 flex items-center justify-between gap-2 hover:bg-gray-50 transition-colors"
+                >
+                  <span className="text-sm font-medium truncate">{p.titre}</span>
+                  <span className="text-xs text-gray-400 flex items-center gap-1 shrink-0">
+                    Voir le planning complet
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </span>
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -148,7 +182,12 @@ export function MonPlanningView({
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{t.titre}</p>
                       {t.project?.titre && (
-                        <p className="text-xs text-gray-400 truncate">{t.project.titre}</p>
+                        <Link
+                          href={`/mon-planning/projets/${t.project.id}`}
+                          className="text-xs text-blue-500 hover:underline truncate block"
+                        >
+                          {t.project.titre}
+                        </Link>
                       )}
                     </div>
                     <span className={`text-xs whitespace-nowrap ${enRetard ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
@@ -224,7 +263,13 @@ export function MonPlanningView({
               {assignments.map((a) => (
                 <div key={a.id} className="border rounded-lg p-3 flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{a.project?.titre ?? 'Projet supprimé'}</p>
+                    {a.project ? (
+                      <Link href={`/mon-planning/projets/${a.project.id}`} className="text-sm font-medium truncate text-blue-500 hover:underline block">
+                        {a.project.titre}
+                      </Link>
+                    ) : (
+                      <p className="text-sm font-medium truncate">Projet supprimé</p>
+                    )}
                     {a.task?.titre && <p className="text-xs text-gray-400 truncate">→ {a.task.titre}</p>}
                   </div>
                   <span className="text-xs text-gray-400 whitespace-nowrap">
