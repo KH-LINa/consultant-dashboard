@@ -53,6 +53,12 @@ const Gantt = dynamic(() => import('gantt-task-react').then((m) => m.Gantt), { s
 
 type VM = 'Day' | 'Week' | 'Month'
 
+// Zoom minimal en vue Jour (colonnes de 60px * zoom) — en-dessous, les
+// libellés du calendrier ("Dim., 19"…) ne tiennent plus dans une colonne et
+// débordent sur les voisines (vérifié empiriquement : lisible à partir de
+// ~51px, soit 0.85 × 60px).
+const MIN_ZOOM_JOUR = 0.85
+
 // Couleurs des barres de tâches selon le statut (cf. prompt)
 const STATUT_COLOR: Record<ProjectTaskStatus, string> = {
   a_faire: '#9ca3af',  // gris
@@ -1073,7 +1079,13 @@ export function ProjectGantt({
               </button>
               <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
                 {([['Jour', 'Day'], ['Semaine', 'Week'], ['Mois', 'Month']] as const).map(([label, mode]) => (
-                  <button key={label} onClick={() => setViewMode(mode)}
+                  <button key={label} onClick={() => {
+                    setViewMode(mode)
+                    // En-dessous de ~51px, les libellés du calendrier (ex. "Dim., 19")
+                    // débordent sur les colonnes voisines et se chevauchent — la vue
+                    // Jour ne peut donc pas descendre en-dessous du zoom minimal sûr.
+                    if (mode === 'Day') setZoom((z) => Math.max(z, MIN_ZOOM_JOUR))
+                  }}
                     className={`text-xs px-2.5 py-1 rounded-md transition-colors ${
                       viewMode === mode ? 'bg-white shadow-sm font-medium' : 'text-gray-500 hover:text-gray-800'
                     }`}>
@@ -1085,7 +1097,7 @@ export function ProjectGantt({
               <div className="flex items-center gap-1.5 px-2" title="Largeur des colonnes">
                 <ZoomOut className="h-3.5 w-3.5 text-gray-400" />
                 <input
-                  type="range" min="50" max="200" step="10"
+                  type="range" min={viewMode === 'Day' ? MIN_ZOOM_JOUR * 100 : 50} max="200" step="10"
                   value={Math.round(zoom * 100)}
                   onChange={(e) => setZoom(Number(e.target.value) / 100)}
                   className="w-24 accent-[#534AB7]"
