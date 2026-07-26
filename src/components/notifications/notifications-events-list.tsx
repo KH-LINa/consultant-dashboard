@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Notification } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Bell, UserPlus, CalendarClock } from 'lucide-react'
+import { Bell, UserPlus, CalendarClock, MessageSquare, AlertTriangle } from 'lucide-react'
 
 const TYPE_ICON = {
   tache_assignee: UserPlus,
   planning_modifie: CalendarClock,
+  commentaire_tache: MessageSquare,
+  signalement: AlertTriangle,
 } as const
 
 function fmtDateHeure(iso: string): string {

@@ -72,9 +72,10 @@ export interface Profile {
 }
 
 // Notifications d'événements générées automatiquement par des triggers
-// (nouvelle tâche assignée, planning modifié) — voir
-// supabase-notifications-migration.sql. profile_id = destinataire.
-export type NotificationType = 'tache_assignee' | 'planning_modifie'
+// (nouvelle tâche assignée, planning modifié, nouveau commentaire, nouveau
+// signalement) — voir supabase-notifications-migration.sql et
+// supabase-comments-signalements-migration.sql. profile_id = destinataire.
+export type NotificationType = 'tache_assignee' | 'planning_modifie' | 'commentaire_tache' | 'signalement'
 
 export interface Notification {
   id: string
@@ -134,6 +135,34 @@ export interface ProjectTask {
   created_at: string
   // Regroupe les occurrences d'une tâche récurrente (même série) ; null = tâche isolée.
   serie_id: string | null
+}
+
+// Fil de commentaires sur une tâche (ex. cause d'un retard ou d'un blocage)
+// — voir supabase-comments-signalements-migration.sql. auteur_nom est
+// dénormalisé à l'insertion (pas de join vers profiles, bloqué par sa RLS
+// pour un tiers).
+export interface TaskComment {
+  id: string
+  task_id: string
+  auteur_id: string
+  auteur_nom: string
+  contenu: string
+  created_at: string
+}
+
+export type SignalementType = 'retard' | 'imprevu' | 'blocage' | 'materiel' | 'autre'
+
+// Événement libre signalé par un utilisateur (imprévu, retard trajet,
+// problème matériel...), toujours notifié au staff (admin/manager).
+export interface Signalement {
+  id: string
+  auteur_id: string
+  auteur_nom: string
+  type: SignalementType
+  titre: string
+  message: string
+  task_id: string | null
+  created_at: string
 }
 
 export type ResourceType = 'humain' | 'materiel'

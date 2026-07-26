@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { MonPlanningView } from '@/components/planning/mon-planning-view'
+import { SignalerEvenementDialog } from '@/components/planning/signaler-evenement-dialog'
 import { Card, CardContent } from '@/components/ui/card'
 import { CalendarDays } from 'lucide-react'
 import type { ProjectTask, Mission, ResourceAssignment } from '@/lib/types'
@@ -58,11 +59,16 @@ export default async function MonPlanningPage() {
       : Promise.resolve({ data: [] }),
   ])
 
+  const mesTaches = ((tasks ?? []) as ProjectTask[]).map((t) => ({ id: t.id, titre: t.titre }))
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Mon planning</h1>
-        <p className="text-gray-500 mt-1">Bonjour {profile.nom} — vos tâches et missions, tous projets confondus</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Mon planning</h1>
+          <p className="text-gray-500 mt-1">Bonjour {profile.nom} — vos tâches et missions, tous projets confondus</p>
+        </div>
+        <SignalerEvenementDialog tasks={mesTaches} />
       </div>
       <MonPlanningView
         tasks={(tasks ?? []) as (ProjectTask & { project: { id: string; titre: string } | null })[]}

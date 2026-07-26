@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select'
 import { ChevronLeft, ChevronRight, ListChecks, FolderKanban, HardHat, FolderOpen } from 'lucide-react'
 import { toast } from 'sonner'
+import { TaskComments } from '@/components/planning/task-comments'
 
 const STATUT_LABEL: Record<ProjectTaskStatus, string> = {
   a_faire: 'À faire', en_cours: 'En cours', fait: 'Fait', bloque: 'Bloqué',
@@ -218,6 +219,7 @@ export function MonPlanningView({
                       <span className="text-xs text-gray-400">%</span>
                     </div>
                   </div>
+                  <TaskComments taskId={t.id} />
                 </div>
               )
             })}

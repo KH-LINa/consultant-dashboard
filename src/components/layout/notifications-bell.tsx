@@ -7,11 +7,13 @@ import type { Notification } from '@/lib/types'
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import { Bell, BellRing, UserPlus, CalendarClock } from 'lucide-react'
+import { Bell, BellRing, UserPlus, CalendarClock, MessageSquare, AlertTriangle } from 'lucide-react'
 
 const TYPE_ICON = {
   tache_assignee: UserPlus,
   planning_modifie: CalendarClock,
+  commentaire_tache: MessageSquare,
+  signalement: AlertTriangle,
 } as const
 
 function tempsEcoule(iso: string): string {
