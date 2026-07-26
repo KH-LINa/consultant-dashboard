@@ -10,9 +10,28 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
-import { User, Mail, Key, Eye, EyeOff, Landmark, Bell } from 'lucide-react'
+import { User, Mail, Key, Eye, EyeOff, Landmark, Bell, Lock } from 'lucide-react'
 
-export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
+// Clés réservées à l'admin (identifiant technique d'envoi d'emails + statut
+// fiscal personnel) — doit rester synchronisé avec la RLS de la table
+// settings (voir supabase-settings-manager-restriction-migration.sql). Un
+// manager qui les soumettrait quand même serait de toute façon bloqué côté
+// base ; ce filtre évite juste l'erreur inutile.
+const ADMIN_ONLY_KEYS: (keyof ConsultantSettings)[] = [
+  'resend_api_key', 'email_expediteur', 'notification_email',
+  'taux_cotisation_urssaf', 'versement_liberatoire', 'taux_versement_ir',
+]
+
+function SectionReserveeAdmin() {
+  return (
+    <p className="flex items-center gap-2 text-sm text-gray-400 py-2">
+      <Lock className="h-3.5 w-3.5" />
+      Réservé à l&apos;administrateur
+    </p>
+  )
+}
+
+export function SettingsForm({ settings, isAdmin }: { settings: ConsultantSettings; isAdmin: boolean }) {
   const supabase = createClient()
   const [form, setForm] = useState({ ...settings })
   const [saving, setSaving] = useState(false)
@@ -26,11 +45,13 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
     e.preventDefault()
     setSaving(true)
 
-    const rows = Object.entries(form).map(([key, value]) => ({
-      key,
-      value: value ?? '',
-      updated_at: new Date().toISOString(),
-    }))
+    const rows = Object.entries(form)
+      .filter(([key]) => isAdmin || !ADMIN_ONLY_KEYS.includes(key as keyof ConsultantSettings))
+      .map(([key, value]) => ({
+        key,
+        value: value ?? '',
+        updated_at: new Date().toISOString(),
+      }))
 
     const { error } = await supabase.from('settings').upsert(rows, { onConflict: 'user_id,key' })
 
@@ -96,6 +117,8 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {!isAdmin ? <SectionReserveeAdmin /> : (
+          <>
           <div className="space-y-2">
             <Label className="flex items-center gap-1">
               <Key className="h-3.5 w-3.5" />
@@ -142,6 +165,8 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
               Adresse qui reçoit une alerte à chaque demande envoyée depuis le site vitrine. Si vide, l&apos;email professionnel ci-dessus est utilisé.
             </p>
           </div>
+          </>
+          )}
         </CardContent>
       </Card>
 
@@ -155,6 +180,8 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
           <CardDescription>Paramètres utilisés pour les estimations URSSAF dans le bilan</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {!isAdmin ? <SectionReserveeAdmin /> : (
+          <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Taux de cotisation URSSAF (%)</Label>
@@ -189,6 +216,8 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
               J'ai opté pour le versement libératoire de l'impôt sur le revenu
             </Label>
           </div>
+          </>
+          )}
         </CardContent>
       </Card>
 

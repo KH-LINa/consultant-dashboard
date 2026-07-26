@@ -35,7 +35,7 @@ export default async function ParametresPage() {
           </Card>
         </Link>
       )}
-      <SettingsForm settings={settings} />
+      <SettingsForm settings={settings} isAdmin={profile?.role === 'admin'} />
     </div>
   )
 }
