@@ -41,18 +41,29 @@ const navItems = [
   { href: '/parametres', label: 'Paramètres', icon: Settings },
 ]
 
-// Un collaborateur n'a accès qu'à son propre planning — le reste de l'outil
-// (contacts, devis, factures, comptabilité, paramètres...) lui est fermé
-// côté RLS/middleware ; la sidebar reflète simplement cette restriction.
+// Un collaborateur n'a accès qu'à son propre planning et ses notifications —
+// le reste de l'outil (contacts, devis, factures, comptabilité, paramètres...)
+// lui est fermé côté RLS/middleware ; la sidebar reflète cette restriction.
 const collaborateurNavItems = [
   { href: '/mon-planning', label: 'Mon planning', icon: CalendarDays },
+  { href: '/notifications', label: 'Notifications', icon: Bell },
 ]
+
+const ROLE_LABEL: Record<UserRole, string> = {
+  admin: 'Administrateur', manager: 'Manager', collaborateur: 'Collaborateur',
+}
+
+function initiales(nom: string): string {
+  return nom.trim().split(/\s+/).slice(0, 2).map((m) => m[0]?.toUpperCase() ?? '').join('') || '?'
+}
 
 interface SidebarProps {
   role: UserRole | null
+  nom: string | null
+  email: string | null
 }
 
-export function Sidebar({ role }: SidebarProps) {
+export function Sidebar({ role, nom, email }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
@@ -91,6 +102,21 @@ export function Sidebar({ role }: SidebarProps) {
       </nav>
 
       <Separator className="bg-gray-700 my-4" />
+
+      {/* Identité de l'utilisateur connecté */}
+      {nom && (
+        <div className="flex items-center gap-3 px-2 py-2 mb-1">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white">
+            {initiales(nom)}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-white">{nom}</p>
+            <p className="truncate text-xs text-gray-400">
+              {role ? ROLE_LABEL[role] : email}
+            </p>
+          </div>
+        </div>
+      )}
 
       <Button
         variant="ghost"

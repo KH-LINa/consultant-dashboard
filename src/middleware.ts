@@ -73,10 +73,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(role === 'collaborateur' ? '/mon-planning' : '/dashboard', request.url))
   }
 
-  // Un collaborateur n'a accès qu'à son planning — tout le reste de l'outil
-  // (contacts, devis, factures, comptabilité, gestion des utilisateurs...)
-  // lui est fermé.
-  if (role === 'collaborateur' && !isPublicPage && !pathname.startsWith('/mon-planning')) {
+  // Un collaborateur n'a accès qu'à son planning et ses notifications — tout
+  // le reste de l'outil (contacts, devis, factures, comptabilité, gestion des
+  // utilisateurs...) lui est fermé.
+  if (
+    role === 'collaborateur' && !isPublicPage
+    && !pathname.startsWith('/mon-planning')
+    && !pathname.startsWith('/notifications')
+  ) {
     return NextResponse.redirect(new URL('/mon-planning', request.url))
   }
 

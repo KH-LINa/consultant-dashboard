@@ -35,10 +35,6 @@ function fmt(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
 }
 
-function euros(n: number): string {
-  return n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })
-}
-
 export function MonPlanningView({
   tasks, missions, assignments,
 }: {
@@ -231,9 +227,8 @@ export function MonPlanningView({
                     <p className="text-sm font-medium truncate">{a.project?.titre ?? 'Projet supprimé'}</p>
                     {a.task?.titre && <p className="text-xs text-gray-400 truncate">→ {a.task.titre}</p>}
                   </div>
-                  <span className="text-xs text-gray-400 whitespace-nowrap flex items-center gap-3">
-                    {a.heures > 0 && <span>{a.heures} h</span>}
-                    {a.budget > 0 && <span>{euros(a.budget)}</span>}
+                  <span className="text-xs text-gray-400 whitespace-nowrap">
+                    {a.heures > 0 ? `${a.heures} h` : ''}
                   </span>
                 </div>
               ))}
