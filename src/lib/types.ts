@@ -71,6 +71,23 @@ export interface Profile {
   created_at: string
 }
 
+// Notifications d'événements générées automatiquement par des triggers
+// (nouvelle tâche assignée, planning modifié) — voir
+// supabase-notifications-migration.sql. profile_id = destinataire.
+export type NotificationType = 'tache_assignee' | 'planning_modifie'
+
+export interface Notification {
+  id: string
+  profile_id: string
+  type: NotificationType
+  titre: string
+  message: string | null
+  lien: string | null
+  task_id: string | null
+  read_at: string | null
+  created_at: string
+}
+
 export interface ProjectPhase {
   id: string
   project_id: string

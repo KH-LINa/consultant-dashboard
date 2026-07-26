@@ -3,8 +3,9 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { toLocalISO } from '@/lib/gantt-deps'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { NotificationsEventsList } from '@/components/notifications/notifications-events-list'
 import { AlertTriangle, CalendarClock, BellOff } from 'lucide-react'
-import type { ProjectTask } from '@/lib/types'
+import type { ProjectTask, Notification } from '@/lib/types'
 
 type TacheAvecProjet = ProjectTask & { project: { titre: string } | null }
 
@@ -17,7 +18,10 @@ export default async function NotificationsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase.from('profiles').select('nom, collaborateur_id').eq('id', user.id).single()
+  const [{ data: profile }, { data: eventsData }] = await Promise.all([
+    supabase.from('profiles').select('nom, collaborateur_id').eq('id', user.id).single(),
+    supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(30),
+  ])
 
   // Tâches assignées à ce collaborateur (via la RLS, il ne voit que les siennes).
   const { data: tasksData } = profile?.collaborateur_id
@@ -29,6 +33,7 @@ export default async function NotificationsPage() {
     : { data: [] }
 
   const tasks = (tasksData ?? []) as TacheAvecProjet[]
+  const events = (eventsData ?? []) as Notification[]
   const auj = toLocalISO(new Date())
   const dans7Jours = toLocalISO(new Date(Date.now() + 7 * 86400000))
 
@@ -37,16 +42,18 @@ export default async function NotificationsPage() {
     (t) => t.date_fin && t.date_fin >= auj && t.date_fin <= dans7Jours && t.statut !== 'fait'
   )
 
-  const total = enRetard.length + echeanceProche.length
+  const total = enRetard.length + echeanceProche.length + events.length
 
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Notifications</h1>
         <p className="text-gray-500 mt-1">
-          {total === 0 ? 'Rien à signaler pour le moment.' : `${total} point${total > 1 ? 's' : ''} d'attention sur vos tâches.`}
+          {total === 0 ? 'Rien à signaler pour le moment.' : `${total} point${total > 1 ? 's' : ''} d'attention.`}
         </p>
       </div>
+
+      <NotificationsEventsList initial={events} />
 
       {total === 0 && (
         <Card>
