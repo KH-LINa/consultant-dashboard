@@ -153,12 +153,14 @@ export function buildTasksForPhase(
 // erreur, ou renvoie une réponse incohérente — jamais d'exception : à
 // l'appelant de décider du repli (ébauche déterministe, ou abandon sans
 // toucher aux données existantes selon le contexte).
-export async function fetchPlanningIA(titre: string, lignes: QuoteLine[]): Promise<PlanningPhase[] | null> {
+export async function fetchPlanningIA(
+  titre: string, lignes: QuoteLine[], consignes?: string
+): Promise<PlanningPhase[] | null> {
   try {
     const res = await fetch('/api/projets/generer-planning', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ titre, lignes }),
+      body: JSON.stringify({ titre, lignes, consignes }),
     })
     if (!res.ok) return null
     const { planning } = await res.json()

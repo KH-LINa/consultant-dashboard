@@ -30,6 +30,7 @@ import {
 } from '@/lib/planning-ia'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -160,6 +161,7 @@ export function ProjectGantt({
   const [regenerating, setRegenerating] = useState(false)
   const [regenDialogOpen, setRegenDialogOpen] = useState(false)
   const [selectedPhaseIds, setSelectedPhaseIds] = useState<Set<string>>(new Set())
+  const [consignes, setConsignes] = useState('')
 
   // Colonnes de la liste (Tâche / Début / Fin) redimensionnables par glisser
   const { widths: colWidths, startResize } = useResizableColumns()
@@ -987,22 +989,21 @@ export function ProjectGantt({
   // Cadence (l'assistant IA de planification, voir /api/projets/generer-planning
   // et lib/planning-ia.ts, partagé avec create-project-button.tsx).
   //
-  // Deux cas :
-  // - Projet sans aucune phase : rien à choisir, génère tout le planning
-  //   d'un coup depuis les lignes du devis (comme à la création du projet).
-  // - Projet avec des phases existantes : ouvre un choix explicite des
-  //   phases à régénérer (voir regenDialogOpen/selectedPhaseIds) — seules
-  //   les phases cochées sont touchées, les autres restent intactes.
+  // Le dialogue s'ouvre toujours au clic — même sans aucune phase existante —
+  // pour que la zone de consignes libres (voir consignes/setConsignes) soit
+  // toujours accessible avant de lancer une génération. Deux cas ensuite :
+  // - Projet sans aucune phase : pas de case à cocher (rien à choisir),
+  //   juste les consignes, puis "Générer" crée tout le planning.
+  // - Projet avec des phases existantes : choix explicite des phases à
+  //   régénérer (regenDialogOpen/selectedPhaseIds) — seules les phases
+  //   cochées sont touchées, les autres restent intactes.
   function handleCadenceClick() {
     if (!quoteLignes || quoteLignes.length === 0) {
       toast.info("Cadence a besoin des lignes du devis lié à ce projet pour proposer un planning.")
       return
     }
-    if (localPhases.length === 0) {
-      handleGenerateAll()
-      return
-    }
     setSelectedPhaseIds(new Set())
+    setConsignes('')
     setRegenDialogOpen(true)
   }
 
@@ -1011,7 +1012,7 @@ export function ProjectGantt({
   async function handleGenerateAll() {
     if (!quoteLignes) return
     setRegenerating(true)
-    const phasesIA = await fetchPlanningIA(projectTitre, quoteLignes)
+    const phasesIA = await fetchPlanningIA(projectTitre, quoteLignes, consignes)
     if (!phasesIA) {
       toast.error("Cadence n'a pas pu générer de planning. Réessayez dans un instant.")
       setRegenerating(false)
@@ -1042,6 +1043,7 @@ export function ProjectGantt({
       toast.success('Cadence a généré le planning ✓')
     }
     setRegenerating(false)
+    setRegenDialogOpen(false)
     router.refresh()
   }
 
@@ -1069,7 +1071,7 @@ export function ProjectGantt({
       quantite: p.date_debut && p.date_fin ? joursOuvresEntre(p.date_debut, p.date_fin, feries) : 1,
       prix_unitaire: 0,
     }))
-    const phasesIA = await fetchPlanningIA(projectTitre, lignesFactices)
+    const phasesIA = await fetchPlanningIA(projectTitre, lignesFactices, consignes)
     if (!phasesIA || phasesIA.length !== aRegenerer.length) {
       toast.error("Cadence n'a pas pu régénérer ces phases. Réessayez.")
       setRegenerating(false)
@@ -1495,33 +1497,62 @@ export function ProjectGantt({
     <Dialog open={regenDialogOpen} onOpenChange={setRegenDialogOpen}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Cadence : quelles phases régénérer ?</DialogTitle>
+          <DialogTitle>
+            {localPhases.length === 0 ? 'Cadence : générer le planning' : 'Cadence : quelles phases régénérer ?'}
+          </DialogTitle>
           <DialogDescription>
-            Seules les phases cochées sont modifiées : leurs tâches actuelles — ainsi que les
-            commentaires, dépendances et affectations de ressources qui leur sont liés — seront
-            remplacées par de nouvelles tâches proposées par l&apos;IA. Les autres phases ne sont
-            pas touchées, et les dates des phases suivantes ne sont pas recalculées automatiquement.
+            {localPhases.length === 0
+              ? "Cadence propose une phase par ligne du devis, détaillée en quelques tâches concrètes."
+              : (<>
+                  Seules les phases cochées sont modifiées : leurs tâches actuelles — ainsi que les
+                  commentaires, dépendances et affectations de ressources qui leur sont liés — seront
+                  remplacées par de nouvelles tâches proposées par l&apos;IA. Les autres phases ne sont
+                  pas touchées, et les dates des phases suivantes ne sont pas recalculées automatiquement.
+                </>)}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-1.5 max-h-64 overflow-y-auto py-1">
-          {localPhases.map((p) => (
-            <label key={p.id} className="flex items-center gap-2 text-sm p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={selectedPhaseIds.has(p.id)}
-                onChange={() => toggleSelectedPhase(p.id)}
-                className="h-4 w-4 rounded border-gray-300"
-              />
-              {p.titre}
-            </label>
-          ))}
+        {localPhases.length > 0 && (
+          <div className="space-y-1.5 max-h-56 overflow-y-auto py-1">
+            {localPhases.map((p) => (
+              <label key={p.id} className="flex items-center gap-2 text-sm p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedPhaseIds.has(p.id)}
+                  onChange={() => toggleSelectedPhase(p.id)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                {p.titre}
+              </label>
+            ))}
+          </div>
+        )}
+        <div className="space-y-1.5">
+          <label htmlFor="cadence-consignes" className="text-xs font-medium text-gray-600">
+            Consignes pour Cadence (optionnel)
+          </label>
+          <Textarea
+            id="cadence-consignes"
+            value={consignes}
+            onChange={(e) => setConsignes(e.target.value)}
+            placeholder="Ex. : privilégie des tâches courtes, ajoute une étape de validation client avant la restitution…"
+            rows={3}
+            maxLength={500}
+            className="text-sm"
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setRegenDialogOpen(false)}>Annuler</Button>
-          <Button onClick={handleRegenerateSelected} disabled={selectedPhaseIds.size === 0 || regenerating}>
-            {regenerating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-            Régénérer {selectedPhaseIds.size > 0 ? `(${selectedPhaseIds.size})` : ''}
-          </Button>
+          {localPhases.length === 0 ? (
+            <Button onClick={handleGenerateAll} disabled={regenerating}>
+              {regenerating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+              Générer
+            </Button>
+          ) : (
+            <Button onClick={handleRegenerateSelected} disabled={selectedPhaseIds.size === 0 || regenerating}>
+              {regenerating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+              Régénérer {selectedPhaseIds.size > 0 ? `(${selectedPhaseIds.size})` : ''}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

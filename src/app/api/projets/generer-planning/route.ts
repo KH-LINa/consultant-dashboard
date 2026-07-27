@@ -52,6 +52,12 @@ Contexte à respecter :
 - Reste réaliste et évite le remplissage : une tâche vague ("Suivi", "Divers") n'est jamais une bonne réponse — chaque tâche doit correspondre à un livrable ou une action identifiable.
 - Vocabulaire cohérent avec une mission de conseil Lean & IA industrielle (diagnostic terrain, ateliers, formation, développement, recette, restitution, documentation...).
 
+Le consultant peut donner des CONSIGNES SUPPLÉMENTAIRES (ex. "privilégie des tâches courtes",
+"ajoute une étape de validation client avant la restitution", "regroupe le développement en une
+seule tâche"). Suis-les fidèlement tant qu'elles restent compatibles avec la structure demandée
+(une phase par ligne, 2 à 5 tâches par phase) ; en cas de conflit avec cette structure, priorise
+la structure et adapte la consigne du mieux possible plutôt que de l'ignorer silencieusement.
+
 Réponds uniquement avec la structure demandée, en français.`
 
 export async function POST(request: NextRequest) {
@@ -84,10 +90,15 @@ export async function POST(request: NextRequest) {
 
   let titre = ''
   let lignes: { description: string; quantite: number; prix_unitaire: number }[] = []
+  let consignes = ''
   try {
     const body = await request.json()
     titre = (body.titre ?? '').toString().trim()
     lignes = Array.isArray(body.lignes) ? body.lignes : []
+    // Bornée à 500 caractères : une consigne de planification reste courte,
+    // pas un texte libre ouvert — évite aussi de gonfler inutilement le coût
+    // Anthropic sur une entrée non plafonnée.
+    consignes = (body.consignes ?? '').toString().trim().slice(0, 500)
   } catch {
     return NextResponse.json({ error: 'Requête invalide' }, { status: 400 })
   }
@@ -104,6 +115,7 @@ export async function POST(request: NextRequest) {
   const lignesTxt = lignes
     .map((l, i) => `${i + 1}. ${l.description} (quantité : ${l.quantite})`)
     .join('\n')
+  const consignesTxt = consignes ? `\n\nConsignes supplémentaires du consultant :\n${consignes}` : ''
 
   try {
     const response = await client.messages.parse({
@@ -119,7 +131,7 @@ export async function POST(request: NextRequest) {
       messages: [
         {
           role: 'user',
-          content: `Mission : ${titre}\n\nLignes du devis signé :\n${lignesTxt}\n\nGénère le planning prévisionnel (phases + tâches).`,
+          content: `Mission : ${titre}\n\nLignes du devis signé :\n${lignesTxt}${consignesTxt}\n\nGénère le planning prévisionnel (phases + tâches).`,
         },
       ],
       output_config: {
