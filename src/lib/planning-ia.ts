@@ -120,6 +120,34 @@ export function buildPhasesAndTasksFromPlanning(
   return { phases, tachesParPhase }
 }
 
+// Reconstruit les tâches d'UNE SEULE phase existante à partir des tâches
+// proposées par l'IA, chaînées en jours ouvrés depuis la date de début
+// actuelle de la phase (elle-même inchangée). Utilisé par la régénération
+// sélective (Cadence : choisir les phases à régénérer, project-gantt.tsx) —
+// contrairement à buildPhasesAndTasksFromPlanning, ne touche jamais aux
+// autres phases du projet.
+export function buildTasksForPhase(
+  projectId: string, phaseId: string, dateDebutPhase: string, taches: PlanningTache[]
+): { tasks: TaskInsert[]; dateFin: string } {
+  const feries = feriesCourants()
+  let debutTache = prochainJourOuvre(dateDebutPhase, feries)
+  const tasks: TaskInsert[] = taches.map((t, j) => {
+    const finTache = addJoursOuvres(debutTache, Math.max(1, t.duree_jours_ouvres) - 1, feries)
+    const task = {
+      project_id: projectId,
+      phase_id: phaseId,
+      titre: t.titre,
+      date_debut: debutTache,
+      date_fin: finTache,
+      ordre: j,
+    }
+    debutTache = addJoursOuvres(finTache, 1, feries)
+    return task
+  })
+  const dateFin = tasks[tasks.length - 1]?.date_fin ?? dateDebutPhase
+  return { tasks, dateFin }
+}
+
 // Appelle Cadence (l'assistant IA de planification) pour proposer un
 // découpage phases + tâches. Retourne null si l'API n'est pas configurée, en
 // erreur, ou renvoie une réponse incohérente — jamais d'exception : à

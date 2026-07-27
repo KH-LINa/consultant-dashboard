@@ -25,13 +25,18 @@ import type {
   ProjectPhase, ProjectMilestone, ProjectTask, TaskDependency, PhaseDependency, Collaborateur, ProjectTaskStatus,
   MilestoneStatus, QuoteLine,
 } from '@/lib/types'
-import { fetchPlanningIA, buildPhasesAndTasksFromPlanning, type TaskInsert } from '@/lib/planning-ia'
+import {
+  fetchPlanningIA, buildPhasesAndTasksFromPlanning, buildTasksForPhase, type TaskInsert,
+} from '@/lib/planning-ia'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
 import {
   GanttChartSquare, AlertTriangle, Plus, Route, Network,
   Maximize2, Minimize2, Printer, ZoomIn, ZoomOut, Download, Search, X, Sparkles, Loader2,
@@ -153,6 +158,8 @@ export function ProjectGantt({
   const [zoom, setZoom] = useState(1) // facteur de largeur des colonnes (0.5 → 2)
   const [fullscreen, setFullscreen] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
+  const [regenDialogOpen, setRegenDialogOpen] = useState(false)
+  const [selectedPhaseIds, setSelectedPhaseIds] = useState<Set<string>>(new Set())
 
   // Colonnes de la liste (Tâche / Début / Fin) redimensionnables par glisser
   const { widths: colWidths, startResize } = useResizableColumns()
@@ -978,26 +985,31 @@ export function ProjectGantt({
   }
 
   // Cadence (l'assistant IA de planification, voir /api/projets/generer-planning
-  // et lib/planning-ia.ts, partagé avec create-project-button.tsx) régénère
-  // entièrement le planning de ce projet à partir des lignes du devis lié.
-  // Destructeur par nature : on ne supprime l'existant qu'une fois le nouveau
-  // planning généré avec succès, jamais avant — et on prévient explicitement
-  // si des phases/tâches existent déjà (elles entraînent en cascade la
-  // suppression des commentaires, dépendances et affectations de ressources).
-  async function handleRegeneratePlanning() {
+  // et lib/planning-ia.ts, partagé avec create-project-button.tsx).
+  //
+  // Deux cas :
+  // - Projet sans aucune phase : rien à choisir, génère tout le planning
+  //   d'un coup depuis les lignes du devis (comme à la création du projet).
+  // - Projet avec des phases existantes : ouvre un choix explicite des
+  //   phases à régénérer (voir regenDialogOpen/selectedPhaseIds) — seules
+  //   les phases cochées sont touchées, les autres restent intactes.
+  function handleCadenceClick() {
     if (!quoteLignes || quoteLignes.length === 0) {
       toast.info("Cadence a besoin des lignes du devis lié à ce projet pour proposer un planning.")
       return
     }
-    if (localPhases.length > 0) {
-      const ok = window.confirm(
-        'Cadence va remplacer tout le planning actuel de ce projet : phases, tâches, ainsi que les ' +
-        'commentaires, dépendances et affectations de ressources qui leur sont liés seront ' +
-        'définitivement supprimés. Continuer ?'
-      )
-      if (!ok) return
+    if (localPhases.length === 0) {
+      handleGenerateAll()
+      return
     }
+    setSelectedPhaseIds(new Set())
+    setRegenDialogOpen(true)
+  }
 
+  // Génération initiale (aucune phase existante) : crée tout depuis les
+  // lignes du devis. Rien à supprimer, donc pas de confirmation nécessaire.
+  async function handleGenerateAll() {
+    if (!quoteLignes) return
     setRegenerating(true)
     const phasesIA = await fetchPlanningIA(projectTitre, quoteLignes)
     if (!phasesIA) {
@@ -1008,18 +1020,14 @@ export function ProjectGantt({
     const { phases: nouvellesPhases, tachesParPhase } = buildPhasesAndTasksFromPlanning(projectId, phasesIA, quoteLignes)
 
     const supabase = createClient()
-    await supabase.from('project_tasks').delete().eq('project_id', projectId)
-    await supabase.from('project_phases').delete().eq('project_id', projectId)
-
     const { data: insertedPhases, error: phasesError } = await supabase
       .from('project_phases')
       .insert(nouvellesPhases)
       .select('id, ordre')
 
     if (phasesError || !insertedPhases) {
-      toast.error('Ancien planning supprimé, mais la création du nouveau a échoué : ' + (phasesError?.message ?? ''))
+      toast.error("L'ébauche de planning a échoué : " + (phasesError?.message ?? ''))
       setRegenerating(false)
-      router.refresh()
       return
     }
 
@@ -1029,11 +1037,64 @@ export function ProjectGantt({
     )
     const { error: tasksError } = await supabase.from('project_tasks').insert(tasksToInsert)
     if (tasksError) {
-      toast.error('Phases recréées, mais le détail des tâches a échoué : ' + tasksError.message)
+      toast.error('Phases créées, mais le détail des tâches a échoué : ' + tasksError.message)
     } else {
-      toast.success('Cadence a régénéré le planning ✓')
+      toast.success('Cadence a généré le planning ✓')
     }
     setRegenerating(false)
+    router.refresh()
+  }
+
+  function toggleSelectedPhase(id: string) {
+    setSelectedPhaseIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  // Régénère UNIQUEMENT les tâches des phases cochées dans le dialogue,
+  // depuis la date de début actuelle de chaque phase (les autres phases et
+  // leurs tâches ne sont ni supprimées ni décalées). Chaque phase cochée
+  // envoie son titre + sa durée actuelle (en jours ouvrés) comme "ligne" à
+  // l'IA — même endpoint que la génération initiale, un seul appel pour
+  // toutes les phases sélectionnées.
+  async function handleRegenerateSelected() {
+    const aRegenerer = localPhases.filter((p) => selectedPhaseIds.has(p.id))
+    if (aRegenerer.length === 0) return
+
+    setRegenerating(true)
+    const lignesFactices: QuoteLine[] = aRegenerer.map((p) => ({
+      description: p.titre,
+      quantite: p.date_debut && p.date_fin ? joursOuvresEntre(p.date_debut, p.date_fin, feries) : 1,
+      prix_unitaire: 0,
+    }))
+    const phasesIA = await fetchPlanningIA(projectTitre, lignesFactices)
+    if (!phasesIA || phasesIA.length !== aRegenerer.length) {
+      toast.error("Cadence n'a pas pu régénérer ces phases. Réessayez.")
+      setRegenerating(false)
+      return
+    }
+
+    const supabase = createClient()
+    const idsARegenerer = aRegenerer.map((p) => p.id)
+    await supabase.from('project_tasks').delete().in('phase_id', idsARegenerer)
+
+    for (let i = 0; i < aRegenerer.length; i++) {
+      const phase = aRegenerer[i]
+      const debutPhase = phase.date_debut ?? toLocalISO(new Date())
+      const { tasks, dateFin } = buildTasksForPhase(projectId, phase.id, debutPhase, phasesIA[i].taches)
+      await supabase.from('project_tasks').insert(tasks)
+      await supabase.from('project_phases').update({ date_fin: dateFin }).eq('id', phase.id)
+    }
+
+    toast.success(
+      aRegenerer.length > 1
+        ? `Cadence a régénéré ${aRegenerer.length} phases ✓`
+        : 'Cadence a régénéré la phase ✓'
+    )
+    setRegenerating(false)
+    setRegenDialogOpen(false)
     router.refresh()
   }
 
@@ -1196,7 +1257,7 @@ export function ProjectGantt({
           )}
 
           <button
-            onClick={handleRegeneratePlanning}
+            onClick={handleCadenceClick}
             disabled={regenerating || !quoteLignes?.length}
             title={
               !quoteLignes?.length
@@ -1430,6 +1491,40 @@ export function ProjectGantt({
 
       <GanttTooltip milestone={selectedMilestone} onClose={() => setSelectedMilestone(null)} />
     </Card>
+
+    <Dialog open={regenDialogOpen} onOpenChange={setRegenDialogOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Cadence : quelles phases régénérer ?</DialogTitle>
+          <DialogDescription>
+            Seules les phases cochées sont modifiées : leurs tâches actuelles — ainsi que les
+            commentaires, dépendances et affectations de ressources qui leur sont liés — seront
+            remplacées par de nouvelles tâches proposées par l&apos;IA. Les autres phases ne sont
+            pas touchées, et les dates des phases suivantes ne sont pas recalculées automatiquement.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-1.5 max-h-64 overflow-y-auto py-1">
+          {localPhases.map((p) => (
+            <label key={p.id} className="flex items-center gap-2 text-sm p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selectedPhaseIds.has(p.id)}
+                onChange={() => toggleSelectedPhase(p.id)}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              {p.titre}
+            </label>
+          ))}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setRegenDialogOpen(false)}>Annuler</Button>
+          <Button onClick={handleRegenerateSelected} disabled={selectedPhaseIds.size === 0 || regenerating}>
+            {regenerating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+            Régénérer {selectedPhaseIds.size > 0 ? `(${selectedPhaseIds.size})` : ''}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     </div>
   )
 }
