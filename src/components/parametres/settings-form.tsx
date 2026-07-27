@@ -150,45 +150,51 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Landmark className="h-4 w-4 text-blue-500" />
-            Comptabilité & cotisations
+            Comptabilité & rémunération (SASU)
           </CardTitle>
-          <CardDescription>Paramètres utilisés pour les estimations URSSAF dans le bilan</CardDescription>
+          <CardDescription>
+            Paramètres utilisés pour les estimations de charges sociales et d&apos;IS dans le bilan.
+            Rémunération du président assimilé salarié — pas de cotisation calculée sur le CA comme
+            en micro-entreprise.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Rémunération brute mensuelle du président (€)</Label>
+            <Input
+              type="number" step="1"
+              value={form.remuneration_brute_mensuelle}
+              onChange={(e) => set('remuneration_brute_mensuelle', e.target.value)}
+              placeholder="0"
+            />
+            <p className="text-xs text-gray-400">Montant brut décidé, avant charges sociales et IR personnel</p>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Taux de cotisation URSSAF (%)</Label>
+              <Label>Taux charges patronales (%)</Label>
               <Input
                 type="number" step="0.1"
-                value={form.taux_cotisation_urssaf}
-                onChange={(e) => set('taux_cotisation_urssaf', e.target.value)}
-                placeholder="24.6"
+                value={form.taux_charges_patronales}
+                onChange={(e) => set('taux_charges_patronales', e.target.value)}
+                placeholder="45"
               />
-              <p className="text-xs text-gray-400">Prestations de services BNC : ~24,6% (2025)</p>
+              <p className="text-xs text-gray-400">Assimilé salarié : ~42-45% du brut (ordre de grandeur)</p>
             </div>
             <div className="space-y-2">
-              <Label>Taux versement libératoire IR (%)</Label>
+              <Label>Taux charges salariales (%)</Label>
               <Input
                 type="number" step="0.1"
-                value={form.taux_versement_ir}
-                onChange={(e) => set('taux_versement_ir', e.target.value)}
-                placeholder="2.2"
+                value={form.taux_charges_salariales}
+                onChange={(e) => set('taux_charges_salariales', e.target.value)}
+                placeholder="22"
               />
-              <p className="text-xs text-gray-400">Si option choisie : 2,2% pour les services</p>
+              <p className="text-xs text-gray-400">Retenues sur le brut avant versement du net : ~22%</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="versement_lib"
-              checked={form.versement_liberatoire === 'true'}
-              onChange={(e) => set('versement_liberatoire', e.target.checked ? 'true' : 'false')}
-              className="h-4 w-4 rounded border-gray-300"
-            />
-            <Label htmlFor="versement_lib" className="cursor-pointer">
-              J'ai opté pour le versement libératoire de l'impôt sur le revenu
-            </Label>
-          </div>
+          <p className="text-xs text-gray-400">
+            L&apos;impôt sur les sociétés (15% jusqu&apos;à 42 500 € de résultat, 25% au-delà) est calculé
+            automatiquement dans le bilan, ces taux ne changent pas selon la structure.
+          </p>
         </CardContent>
       </Card>
 

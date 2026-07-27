@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
       })
     } else {
       const resend = new Resend(s.resend_api_key)
-      const fromName = s.consultant_nom || 'i·a·infinity'
+      const fromName = s.consultant_nom || 'Yndra'
       const { data: mailData, error: mailErr } = await resend.emails.send({
         from: `${fromName} <${s.email_expediteur}>`,
         to: [notifyTo],

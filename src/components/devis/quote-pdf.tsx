@@ -141,7 +141,7 @@ export function QuotePDF({ quote, contact, consultantName, siret }: QuotePDFProp
         {/* Pied de page */}
         <View style={styles.footer} fixed>
           <Text style={styles.footerText}>
-            {consultantName} — Auto-entrepreneur — SIRET : {siret}
+            {consultantName} — [STATUT JURIDIQUE À COMPLÉTER] — SIRET : {siret}
           </Text>
           <Text style={styles.footerText}>
             TVA non applicable en vertu de l'article 293 B du Code Général des Impôts

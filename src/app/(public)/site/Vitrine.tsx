@@ -58,9 +58,9 @@ export default function Vitrine() {
     <div className="iav" data-theme={theme || undefined}>
       <header className="site-header">
         <div className="wrap nav">
-          <a className="brand" href="#top" aria-label="i·a·infinity accueil">
+          <a className="brand" href="#top" aria-label="Yndra accueil">
             <InfinityMark />
-            <b>i·a·infinity</b>
+            <b>Yndra</b>
           </a>
           <nav className="nav-links">
             <a href="#methode">Méthode</a>
@@ -297,12 +297,12 @@ export default function Vitrine() {
         <div className="wrap foot">
           <a className="brand" href="#top">
             <InfinityMark />
-            <b>i·a·infinity</b>
+            <b>Yndra</b>
           </a>
           <div className="legal">
             Khelaf FEDILA — Consultant Lean &amp; IA Industrielle<br />
-            Auto-entrepreneur · SIRET [À COMPLÉTER] · TVA non applicable, art. 293 B du CGI<br />
-            © {new Date().getFullYear()} i·a·infinity — Tous droits réservés
+            [STATUT JURIDIQUE À COMPLÉTER] · SIRET [À COMPLÉTER] · TVA non applicable, art. 293 B du CGI<br />
+            © {new Date().getFullYear()} Yndra — Tous droits réservés
           </div>
         </div>
       </footer>

@@ -9,9 +9,9 @@ export interface ConsultantSettings {
   resend_api_key: string
   email_expediteur: string
   notification_email: string
-  taux_cotisation_urssaf: string
-  versement_liberatoire: string
-  taux_versement_ir: string
+  remuneration_brute_mensuelle: string
+  taux_charges_patronales: string
+  taux_charges_salariales: string
   relances_auto: string
 }
 
@@ -24,9 +24,9 @@ const DEFAULTS: ConsultantSettings = {
   resend_api_key: '',
   email_expediteur: '',
   notification_email: '',
-  taux_cotisation_urssaf: '24.6',
-  versement_liberatoire: 'false',
-  taux_versement_ir: '2.2',
+  remuneration_brute_mensuelle: '0',
+  taux_charges_patronales: '45',
+  taux_charges_salariales: '22',
   relances_auto: 'true',
 }
 

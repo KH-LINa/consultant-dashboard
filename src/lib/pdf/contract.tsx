@@ -53,7 +53,7 @@ export function ContractPDF({ numero, contenu, consultantName, siret, createdAt 
           <View>
             <BrandLogo height={20} />
             <Text style={[styles.logo, { marginTop: 5 }]}>{consultantName}</Text>
-            <Text style={styles.subtitle}>Auto-entrepreneur — Consultant IA Indépendant</Text>
+            <Text style={styles.subtitle}>[STATUT JURIDIQUE À COMPLÉTER] — Consultant IA Indépendant</Text>
             <Text style={[styles.subtitle, { marginTop: 1 }]}>SIRET : {siret}</Text>
           </View>
           <View style={styles.infoBlock}>
@@ -77,7 +77,7 @@ export function ContractPDF({ numero, contenu, consultantName, siret, createdAt 
         {/* Pied de page */}
         <View style={styles.footer} fixed>
           <Text style={styles.footerText}>
-            {consultantName} — Auto-entrepreneur — SIRET : {siret}
+            {consultantName} — [STATUT JURIDIQUE À COMPLÉTER] — SIRET : {siret}
           </Text>
           <Text style={styles.footerText}>
             Dispensé d'immatriculation au RCS et au RM — TVA non applicable, art. 293 B du CGI

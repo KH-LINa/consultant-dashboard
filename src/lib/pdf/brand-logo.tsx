@@ -1,12 +1,12 @@
 import { Svg, Path, Circle } from '@react-pdf/renderer'
 
 /**
- * Marque « boucle infinie » i·a·infinity pour les documents PDF.
+ * Marque « boucle infinie » Yndra pour les documents PDF.
  * Reproduite à l'identique depuis le site vitrine
  * (src/app/(public)/site/Vitrine.tsx → InfinityMark) pour une cohérence
  * de marque entre le site et les documents générés (devis, factures, contrats).
  *
- * Couleur de marque par défaut : violet #534AB7 (charte i·a·infinity).
+ * Couleur de marque par défaut : violet #534AB7 (charte Yndra).
  */
 const BRAND = '#534AB7'
 const INFINITY_PATH =

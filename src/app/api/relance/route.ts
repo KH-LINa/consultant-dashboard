@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
         <p style="white-space: pre-line;">${message}</p>
         <hr style="border-color: #e5e7eb; margin: 24px 0;" />
         <p style="font-size: 12px; color: #6b7280;">
-          ${settings.consultant_nom} — Auto-entrepreneur — SIRET : ${settings.consultant_siret}<br/>
+          ${settings.consultant_nom} — [STATUT JURIDIQUE À COMPLÉTER] — SIRET : ${settings.consultant_siret}<br/>
           TVA non applicable — art. 293 B du CGI
         </p>
       </div>

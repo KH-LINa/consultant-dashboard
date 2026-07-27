@@ -70,7 +70,7 @@ export function InvoicePDF({ invoice, contact, consultantName, siret, email, tel
           <View>
             <BrandLogo />
             <Text style={[styles.logo, { marginTop: 6 }]}>{consultantName}</Text>
-            <Text style={styles.subtitle}>Consultant IA Indépendant — Auto-entrepreneur</Text>
+            <Text style={styles.subtitle}>Consultant IA Indépendant — [STATUT JURIDIQUE À COMPLÉTER]</Text>
             <Text style={[styles.subtitle, { marginTop: 2 }]}>SIRET : {siret}</Text>
             {email && <Text style={[styles.subtitle, { marginTop: 2 }]}>{email}</Text>}
             {telephone && <Text style={[styles.subtitle, { marginTop: 1 }]}>{telephone}</Text>}
@@ -102,7 +102,7 @@ export function InvoicePDF({ invoice, contact, consultantName, siret, email, tel
           <View style={styles.infoBox}>
             <Text style={styles.infoBoxLabel}>ÉMETTEUR</Text>
             <Text style={{ fontFamily: 'Helvetica-Bold', marginBottom: 2 }}>{consultantName}</Text>
-            <Text style={{ color: '#6b7280' }}>Auto-entrepreneur</Text>
+            <Text style={{ color: '#6b7280' }}>[STATUT JURIDIQUE À COMPLÉTER]</Text>
             <Text style={{ color: '#6b7280' }}>SIRET : {siret}</Text>
             {email && <Text style={{ color: '#6b7280' }}>{email}</Text>}
           </View>
@@ -176,7 +176,7 @@ export function InvoicePDF({ invoice, contact, consultantName, siret, email, tel
         {/* Pied de page */}
         <View style={styles.footer} fixed>
           <Text style={styles.footerText}>
-            {consultantName} — Auto-entrepreneur — SIRET : {siret} — TVA non applicable (art. 293 B CGI)
+            {consultantName} — [STATUT JURIDIQUE À COMPLÉTER] — SIRET : {siret} — TVA non applicable (art. 293 B CGI)
           </Text>
           <Text style={[styles.footerText, { color: '#d1d5db' }]}>
             {invoice.numero} — Émise le {emissionStr}
