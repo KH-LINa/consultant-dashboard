@@ -23,8 +23,9 @@ import 'gantt-task-react/dist/index.css'
 import { createClient } from '@/lib/supabase/client'
 import type {
   ProjectPhase, ProjectMilestone, ProjectTask, TaskDependency, PhaseDependency, Collaborateur, ProjectTaskStatus,
-  MilestoneStatus,
+  MilestoneStatus, QuoteLine,
 } from '@/lib/types'
+import { fetchPlanningIA, buildPhasesAndTasksFromPlanning, type TaskInsert } from '@/lib/planning-ia'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -33,7 +34,7 @@ import {
 } from '@/components/ui/select'
 import {
   GanttChartSquare, AlertTriangle, Plus, Route, Network,
-  Maximize2, Minimize2, Printer, ZoomIn, ZoomOut, Download, Search, X,
+  Maximize2, Minimize2, Printer, ZoomIn, ZoomOut, Download, Search, X, Sparkles, Loader2,
 } from 'lucide-react'
 import { GanttTooltip } from '@/components/projets/gantt-tooltip'
 import { PertView } from '@/components/projets/pert-view'
@@ -112,6 +113,10 @@ interface ProjectGanttProps {
   collaborateurs: Collaborateur[]
   // Coût total du projet (affectations de ressources) — null si aucune
   coutTotal?: number | null
+  // Lignes du devis lié (project.quote_id) — nécessaires pour que Cadence
+  // (l'assistant IA de planification) puisse (ré)générer un planning depuis
+  // ce projet ; null/absent si le projet n'est lié à aucun devis.
+  quoteLignes?: QuoteLine[] | null
 }
 
 function toDate(d: string | null): Date | null {
@@ -138,6 +143,7 @@ function initials(nom: string): string {
 
 export function ProjectGantt({
   projectId, projectTitre, phases, tasks, milestones, dependencies, phaseDependencies = [], collaborateurs, coutTotal,
+  quoteLignes,
 }: ProjectGanttProps) {
   const router = useRouter()
   const [viewMode, setViewMode] = useState<VM>('Week')
@@ -146,6 +152,7 @@ export function ProjectGantt({
   const [view, setView] = useState<'gantt' | 'pert'>('gantt')
   const [zoom, setZoom] = useState(1) // facteur de largeur des colonnes (0.5 → 2)
   const [fullscreen, setFullscreen] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
 
   // Colonnes de la liste (Tâche / Début / Fin) redimensionnables par glisser
   const { widths: colWidths, startResize } = useResizableColumns()
@@ -970,6 +977,66 @@ export function ProjectGantt({
     }
   }
 
+  // Cadence (l'assistant IA de planification, voir /api/projets/generer-planning
+  // et lib/planning-ia.ts, partagé avec create-project-button.tsx) régénère
+  // entièrement le planning de ce projet à partir des lignes du devis lié.
+  // Destructeur par nature : on ne supprime l'existant qu'une fois le nouveau
+  // planning généré avec succès, jamais avant — et on prévient explicitement
+  // si des phases/tâches existent déjà (elles entraînent en cascade la
+  // suppression des commentaires, dépendances et affectations de ressources).
+  async function handleRegeneratePlanning() {
+    if (!quoteLignes || quoteLignes.length === 0) {
+      toast.info("Cadence a besoin des lignes du devis lié à ce projet pour proposer un planning.")
+      return
+    }
+    if (localPhases.length > 0) {
+      const ok = window.confirm(
+        'Cadence va remplacer tout le planning actuel de ce projet : phases, tâches, ainsi que les ' +
+        'commentaires, dépendances et affectations de ressources qui leur sont liés seront ' +
+        'définitivement supprimés. Continuer ?'
+      )
+      if (!ok) return
+    }
+
+    setRegenerating(true)
+    const phasesIA = await fetchPlanningIA(projectTitre, quoteLignes)
+    if (!phasesIA) {
+      toast.error("Cadence n'a pas pu générer de planning. Réessayez dans un instant.")
+      setRegenerating(false)
+      return
+    }
+    const { phases: nouvellesPhases, tachesParPhase } = buildPhasesAndTasksFromPlanning(projectId, phasesIA, quoteLignes)
+
+    const supabase = createClient()
+    await supabase.from('project_tasks').delete().eq('project_id', projectId)
+    await supabase.from('project_phases').delete().eq('project_id', projectId)
+
+    const { data: insertedPhases, error: phasesError } = await supabase
+      .from('project_phases')
+      .insert(nouvellesPhases)
+      .select('id, ordre')
+
+    if (phasesError || !insertedPhases) {
+      toast.error('Ancien planning supprimé, mais la création du nouveau a échoué : ' + (phasesError?.message ?? ''))
+      setRegenerating(false)
+      router.refresh()
+      return
+    }
+
+    const idParOrdre = new Map(insertedPhases.map((p) => [p.ordre, p.id]))
+    const tasksToInsert: TaskInsert[] = tachesParPhase.flatMap((taches, i) =>
+      taches.map((t) => ({ ...t, phase_id: idParOrdre.get(i) ?? null }))
+    )
+    const { error: tasksError } = await supabase.from('project_tasks').insert(tasksToInsert)
+    if (tasksError) {
+      toast.error('Phases recréées, mais le détail des tâches a échoué : ' + tasksError.message)
+    } else {
+      toast.success('Cadence a régénéré le planning ✓')
+    }
+    setRegenerating(false)
+    router.refresh()
+  }
+
   // Export CSV (compatible Excel : BOM UTF-8 + séparateur point-virgule)
   function exporterCSV() {
     const lignes: string[][] = [['N°', 'Tâche', 'Durée (j ouvrés)', 'Début', 'Fin', 'Avancement %', 'Statut', 'Responsable']]
@@ -1128,6 +1195,18 @@ export function ProjectGantt({
             </>
           )}
 
+          <button
+            onClick={handleRegeneratePlanning}
+            disabled={regenerating || !quoteLignes?.length}
+            title={
+              !quoteLignes?.length
+                ? "Cadence : indisponible, ce projet n'est lié à aucun devis"
+                : "Cadence : (re)générer le planning avec l'IA"
+            }
+            className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-gray-500"
+          >
+            {regenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+          </button>
           <button
             onClick={exporterCSV}
             title="Exporter le planning en CSV (Excel)"

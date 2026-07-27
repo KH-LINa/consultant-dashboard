@@ -36,7 +36,7 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
     { data: tasks },
     { data: missions },
   ] = await Promise.all([
-    supabase.from('projects').select('*, contact:contacts(nom, entreprise), responsable:collaborateurs(nom, couleur)').eq('id', params.id).single(),
+    supabase.from('projects').select('*, contact:contacts(nom, entreprise), responsable:collaborateurs(nom, couleur), quote:quotes(lignes)').eq('id', params.id).single(),
     supabase.from('collaborateurs').select('*').order('nom'),
     supabase.from('project_phases').select('*').eq('project_id', params.id).order('ordre'),
     supabase.from('project_milestones').select('*').eq('project_id', params.id).order('date_echeance'),
@@ -180,6 +180,7 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
         phaseDependencies={phaseDependencies ?? []}
         collaborateurs={collaborateurs ?? []}
         coutTotal={coutTotal}
+        quoteLignes={project.quote?.lignes ?? null}
       />
 
       <CollaborateursManager collaborateurs={collaborateurs ?? []} />
