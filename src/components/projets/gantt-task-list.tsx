@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Task } from 'gantt-task-react'
-import { Plus, Scissors, Trash2 } from 'lucide-react'
+import { Plus, Scissors, Trash2, GripVertical } from 'lucide-react'
 import { joursOuvresEntre } from '@/lib/jours-ouvres'
 import { toLocalISO } from '@/lib/gantt-deps'
 
@@ -118,6 +118,12 @@ function toInputDate(d: Date): string {
  * la barre graphique — mêmes règles de recalage en jours ouvrés et de cascade
  * de dépendances, gérées côté appelant).
  * wbs : numéro hiérarchique de la ligne (1, 1.1, 1.1.1…), vide si non numérotée.
+ * peutReordonner/onReorder : glisser-déposer pour changer l'ordre — une
+ * poignée n'apparaît que sur les lignes où peutReordonner(ganttId) est vrai
+ * (phases, et tâches de premier niveau uniquement — pas les sous-tâches ni
+ * les jalons) ; onReorder(déplacée, cible) est appelé au drop, à l'appelant
+ * de vérifier que les deux lignes sont du même type et compatibles (même
+ * phase pour des tâches) avant de persister.
  */
 export function createTaskListComponents(
   widths: ColWidths,
@@ -129,7 +135,9 @@ export function createTaskListComponents(
   onDelete: (ganttId: string) => void,
   onEditDate: (ganttId: string, champ: 'debut' | 'fin', valeur: string) => boolean,
   wbs: (ganttId: string) => string,
-  feries: Set<string>
+  feries: Set<string>,
+  peutReordonner: (ganttId: string) => boolean,
+  onReorder: (ganttIdDeplace: string, ganttIdCible: string) => void
 ) {
   const Header: React.FC<{ headerHeight: number; fontFamily: string; fontSize: string }> =
     ({ headerHeight, fontFamily, fontSize }) => (
@@ -150,12 +158,34 @@ export function createTaskListComponents(
     fontSize: string
     tasks: Task[]
     onExpanderClick: (task: Task) => void
-  }> = ({ rowHeight, fontFamily, fontSize, tasks, onExpanderClick }) => (
+  }> = ({ rowHeight, fontFamily, fontSize, tasks, onExpanderClick }) => {
+    const [dragOverId, setDragOverId] = useState<string | null>(null)
+    return (
     <div style={{ fontFamily, fontSize }}>
-      {tasks.map((t) => (
+      {tasks.map((t) => {
+        const deplacable = peutReordonner(t.id)
+        return (
         <div key={t.id} style={{ height: rowHeight }}
-          className={`group flex items-center border-b border-gray-50 ${t.id === 'projet_global' ? 'bg-[#EEEBFA]/60' : ''}`}>
+          draggable={deplacable}
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = 'move'
+            e.dataTransfer.setData('text/plain', t.id)
+          }}
+          onDragOver={(e) => { if (deplacable) { e.preventDefault(); if (dragOverId !== t.id) setDragOverId(t.id) } }}
+          onDragLeave={() => setDragOverId((id) => (id === t.id ? null : id))}
+          onDrop={(e) => {
+            e.preventDefault()
+            setDragOverId(null)
+            const deplaceId = e.dataTransfer.getData('text/plain')
+            if (deplacable && deplaceId && deplaceId !== t.id) onReorder(deplaceId, t.id)
+          }}
+          className={`group flex items-center border-b border-gray-50 ${t.id === 'projet_global' ? 'bg-[#EEEBFA]/60' : ''} ${dragOverId === t.id ? 'border-t-2 border-t-[#534AB7]' : ''}`}>
           <div style={{ width: widths.name, minWidth: widths.name }} className="flex items-center gap-1 px-3 overflow-hidden">
+            {deplacable && (
+              <GripVertical
+                className="shrink-0 h-3.5 w-3.5 text-gray-300 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing"
+              />
+            )}
             {wbs(t.id) && (
               <span className="shrink-0 w-9 text-[10px] tabular-nums text-gray-400">{wbs(t.id)}</span>
             )}
@@ -271,9 +301,11 @@ export function createTaskListComponents(
             )}
           </div>
         </div>
-      ))}
+        )
+      })}
     </div>
-  )
+    )
+  }
 
   return { Header, Table }
 }

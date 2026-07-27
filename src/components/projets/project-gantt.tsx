@@ -40,13 +40,13 @@ import {
 } from '@/components/ui/dialog'
 import {
   GanttChartSquare, AlertTriangle, Plus, Route, Network,
-  Maximize2, Minimize2, Printer, ZoomIn, ZoomOut, Download, Search, X, Sparkles, Loader2,
+  Maximize2, Minimize2, Printer, ZoomIn, ZoomOut, Download, Search, X, Sparkles, Loader2, Link2,
 } from 'lucide-react'
 import { GanttTooltip } from '@/components/projets/gantt-tooltip'
 import { PertView } from '@/components/projets/pert-view'
 import { useResizableColumns, createTaskListComponents } from '@/components/projets/gantt-task-list'
 import {
-  findDependencyConflicts, toLocalISO, computeCriticalPath, completionRate, phaseStatus,
+  findDependencyConflicts, toLocalISO, computeCriticalPath, completionRate, phaseStatus, wouldCreateCycle,
 } from '@/lib/gantt-deps'
 import {
   feriesCourants, prochainJourOuvre, precedentJourOuvre, addJoursOuvres, joursOuvresEntre, estJourOuvre,
@@ -162,6 +162,8 @@ export function ProjectGantt({
   const [regenDialogOpen, setRegenDialogOpen] = useState(false)
   const [selectedPhaseIds, setSelectedPhaseIds] = useState<Set<string>>(new Set())
   const [consignes, setConsignes] = useState('')
+  const [linkMode, setLinkMode] = useState(false)
+  const [linkFrom, setLinkFrom] = useState<string | null>(null)
 
   // Colonnes de la liste (Tâche / Début / Fin) redimensionnables par glisser
   const { widths: colWidths, startResize } = useResizableColumns()
@@ -916,9 +918,94 @@ export function ProjectGantt({
     return true
   }, [taskById, localPhases, applyDateChange])
 
+  // Une ligne est déplaçable au glisser-déposer si c'est une phase, ou une
+  // tâche de PREMIER NIVEAU (pas de sous-tâche — leur ordre relève de la
+  // hiérarchie parent/enfant, pas de ce mécanisme). Les jalons et la barre
+  // récapitulative du projet ne sont jamais déplaçables.
+  const peutReordonner = useCallback((ganttId: string): boolean => {
+    if (ganttId.startsWith('phase_')) return true
+    if (ganttId.startsWith('task_')) {
+      const t = taskById.get(ganttId.replace('task_', ''))
+      return !!t && !t.parent_task_id
+    }
+    return false
+  }, [taskById])
+
+  // Glisser-déposer : réordonne des phases entre elles, ou des tâches de
+  // premier niveau au sein d'une MÊME phase (un déplacement entre deux
+  // phases différentes est refusé ici — utilisez le sélecteur "Phase" dans
+  // la liste des tâches, qui gère aussi le rattachement). Persiste en
+  // réécrivant `ordre` de façon séquentielle sur tout le groupe concerné,
+  // avec rollback local si l'un des updates échoue.
+  const handleReorder = useCallback(async (ganttIdDeplace: string, ganttIdCible: string) => {
+    const md = ganttIdDeplace.match(/^(phase|task)_(.+)$/)
+    const mt = ganttIdCible.match(/^(phase|task)_(.+)$/)
+    if (!md || !mt || md[1] !== mt[1]) return
+    const kind = md[1]
+    const idDeplace = md[2]
+    const idCible = mt[2]
+    if (idDeplace === idCible) return
+
+    const supabase = createClient()
+
+    if (kind === 'phase') {
+      const ordonnees = [...localPhases].sort((a, b) => a.ordre - b.ordre)
+      const from = ordonnees.findIndex((p) => p.id === idDeplace)
+      const to = ordonnees.findIndex((p) => p.id === idCible)
+      if (from === -1 || to === -1) return
+      const [moved] = ordonnees.splice(from, 1)
+      ordonnees.splice(to, 0, moved)
+
+      const prev = localPhases
+      setLocalPhases(ordonnees.map((p, i) => ({ ...p, ordre: i })))
+      const results = await Promise.all(
+        ordonnees.map((p, i) => supabase.from('project_phases').update({ ordre: i }).eq('id', p.id))
+      )
+      if (results.some((r) => r.error)) {
+        setLocalPhases(prev)
+        toast.error('Échec de la réorganisation des phases')
+      } else {
+        toast.success('Ordre des phases mis à jour')
+        router.refresh()
+      }
+    } else {
+      const deplace = taskById.get(idDeplace)
+      const cible = taskById.get(idCible)
+      if (!deplace || !cible || deplace.phase_id !== cible.phase_id) {
+        toast.error("Le glisser-déposer ne réordonne que des tâches d'une même phase.")
+        return
+      }
+      const memePhase = localTasks.filter((t) => t.phase_id === deplace.phase_id && !t.parent_task_id)
+      const ordonnees = [...memePhase].sort((a, b) => a.ordre - b.ordre)
+      const from = ordonnees.findIndex((t) => t.id === idDeplace)
+      const to = ordonnees.findIndex((t) => t.id === idCible)
+      if (from === -1 || to === -1) return
+      const [moved] = ordonnees.splice(from, 1)
+      ordonnees.splice(to, 0, moved)
+
+      const prev = localTasks
+      const nouvelOrdre = new Map(ordonnees.map((t, i) => [t.id, i]))
+      setLocalTasks((ts) => ts.map((t) => (nouvelOrdre.has(t.id) ? { ...t, ordre: nouvelOrdre.get(t.id)! } : t)))
+      const results = await Promise.all(
+        ordonnees.map((t, i) => supabase.from('project_tasks').update({ ordre: i }).eq('id', t.id))
+      )
+      if (results.some((r) => r.error)) {
+        setLocalTasks(prev)
+        toast.error('Échec de la réorganisation des tâches')
+      } else {
+        toast.success('Ordre des tâches mis à jour')
+        router.refresh()
+      }
+    }
+  }, [localPhases, localTasks, taskById, router])
+
   const { Header: TaskListHeader, Table: TaskListTable } = useMemo(
-    () => createTaskListComponents(colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, handleSupprimerTache, handleEditDate, wbsDe, feries),
-    [colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, handleSupprimerTache, handleEditDate, wbsDe, feries]
+    () => createTaskListComponents(
+      colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, handleSupprimerTache,
+      handleEditDate, wbsDe, feries, peutReordonner, handleReorder
+    ),
+    [colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, handleSupprimerTache,
+      handleEditDate, wbsDe, feries, peutReordonner, handleReorder]
   )
 
   async function handleProgressChange(task: GanttTask) {
@@ -930,7 +1017,48 @@ export function ProjectGantt({
     if (!res.ok) { setLocalTasks(prev); toast.error('Échec de la mise à jour de l\'avancement') }
   }
 
+  // Mode liaison : deux clics sur des barres de TÂCHES créent une dépendance
+  // fin→début (FS, sans délai) entre elles — un clic ailleurs (phase, jalon)
+  // n'est pas accepté, la création fine (type DD/FF/DF, délai) reste dans
+  // le panneau "Dépendances entre tâches" plus bas. Recliquer la même tâche
+  // annule la sélection en cours sans quitter le mode.
+  async function handleCreateLink(ganttIdPred: string, ganttIdSucc: string) {
+    const predId = ganttIdPred.replace('task_', '')
+    const succId = ganttIdSucc.replace('task_', '')
+    if (wouldCreateCycle(dependencies, predId, succId)) {
+      toast.error(
+        `Impossible : « ${titreReel(ganttIdSucc)} » précède déjà « ${titreReel(ganttIdPred)} » — cette dépendance créerait une boucle.`
+      )
+      return
+    }
+    const supabase = createClient()
+    const { error } = await supabase.from('task_dependencies').insert({
+      predecessor_id: predId, successor_id: succId, type: 'FS', lag_days: 0,
+    })
+    if (error) {
+      toast.error(error.message.includes('duplicate') ? 'Cette dépendance existe déjà' : error.message)
+    } else {
+      toast.success(`« ${titreReel(ganttIdPred)} » → « ${titreReel(ganttIdSucc)} » liées (fin → début)`)
+      router.refresh()
+    }
+  }
+
   function handleClick(task: GanttTask) {
+    if (linkMode) {
+      if (!task.id.startsWith('task_')) {
+        toast.info('Seules les tâches (pas les phases ni les jalons) peuvent être liées par une dépendance.')
+        return
+      }
+      if (!linkFrom) {
+        setLinkFrom(task.id)
+        return
+      }
+      if (linkFrom === task.id) { setLinkFrom(null); return }
+      const from = linkFrom
+      setLinkFrom(null)
+      handleCreateLink(from, task.id)
+      return
+    }
     if (task.id.startsWith('ms_')) {
       const id = task.id.replace('ms_', '')
       const ms = localMilestones.find((m) => m.id === id)
@@ -1193,6 +1321,12 @@ export function ProjectGantt({
               {conflicts.length} conflit{conflicts.length > 1 ? 's' : ''}
             </span>
           )}
+          {linkMode && (
+            <span className="flex items-center gap-1 text-xs font-medium text-white bg-[#534AB7] px-2 py-0.5 rounded-full">
+              <Link2 className="h-3 w-3" />
+              {linkFrom ? `« ${titreReel(linkFrom)} » → cliquez la tâche suivante` : 'Mode liaison : cliquez une tâche prérequise'}
+            </span>
+          )}
         </CardTitle>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Bascule Gantt / PERT */}
@@ -1258,6 +1392,17 @@ export function ProjectGantt({
             </>
           )}
 
+          <button
+            onClick={() => { setLinkMode((v) => !v); setLinkFrom(null) }}
+            title={linkMode ? 'Quitter le mode liaison' : "Lier deux tâches par une dépendance (clic sur la prérequise, puis la suivante)"}
+            className={`p-1.5 rounded-lg border transition-colors ${
+              linkMode
+                ? 'bg-[#534AB7] border-[#534AB7] text-white'
+                : 'border-gray-200 text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <Link2 className="h-3.5 w-3.5" />
+          </button>
           <button
             onClick={handleCadenceClick}
             disabled={regenerating || !quoteLignes?.length}
