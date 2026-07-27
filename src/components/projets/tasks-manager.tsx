@@ -99,6 +99,25 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs, comment
     return m
   }, new Map<string, number>())
 
+  // Tri chronologique pour l'affichage — `ordre` n'est unique QUE dans sa
+  // propre phase (repart à 0 à chaque phase, y compris pour les tâches
+  // générées par Cadence), donc trier cette liste à plat par `ordre` seul
+  // mélange arbitrairement les tâches de phases différentes. Le Gantt
+  // n'a pas ce problème car il trie déjà chaque groupe par date_debut ;
+  // on applique la même logique ici, avec `ordre` en repli pour les tâches
+  // sans date (égalité de date, ou aucune date renseignée).
+  const tasksTriees = [...tasks].sort((a, b) => {
+    if (a.date_debut && b.date_debut) {
+      const cmp = a.date_debut.localeCompare(b.date_debut)
+      if (cmp !== 0) return cmp
+    } else if (a.date_debut) {
+      return -1
+    } else if (b.date_debut) {
+      return 1
+    }
+    return a.ordre - b.ordre
+  })
+
   async function removeSerie(serieId: string) {
     const { error } = await supabase.from('project_tasks').delete().eq('serie_id', serieId)
     if (error) toast.error(error.message)
@@ -114,7 +133,7 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs, comment
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        {tasks.map((t) => {
+        {tasksTriees.map((t) => {
           const resp = t.responsable_id ? collabById[t.responsable_id] : null
           return (
             <div key={t.id} className="border rounded-lg p-3 space-y-2 group">
