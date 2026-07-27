@@ -1,10 +1,14 @@
-import type { ProjectTask, TaskDependency } from '@/lib/types'
+import type { ProjectTask, ProjectPhase, TaskDependency, DependencyType, ProjectTaskStatus } from '@/lib/types'
+import { addJoursOuvres, joursOuvresEntre } from '@/lib/jours-ouvres'
 
 /**
  * Utilitaires de vérification des dépendances entre tâches (Gantt).
  * Fonctions pures, sans accès réseau — utilisées par le Gantt et le
  * gestionnaire de dépendances pour valider avant insertion et signaler
  * les incohérences de planning.
+ *
+ * Les dépendances portent un type MS Project (FS/SS/FF/SF) et un délai
+ * (lag) en jours ouvrés — voir contrainteDep() pour la sémantique exacte.
  */
 
 /**
@@ -36,11 +40,17 @@ export function wouldCreateCycle(
   return false
 }
 
-export interface DependencyConflict {
-  dep: TaskDependency
-  predecessor: ProjectTask
-  successor: ProjectTask
-  /** Recalage proposé pour la tâche successeur (durée conservée). */
+/** Forme minimale requise pour la détection de conflits : une tâche ET une
+ *  phase satisfont cette forme, ce qui permet de réutiliser les mêmes
+ *  fonctions pour les dépendances entre tâches ET entre phases. */
+type EntiteDatee = { id: string; titre: string; date_debut: string | null; date_fin: string | null }
+type DependanceTypee = { id: string; predecessor_id: string; successor_id: string; type: DependencyType; lag_days: number }
+
+export interface DependencyConflict<E extends EntiteDatee = ProjectTask, D extends DependanceTypee = TaskDependency> {
+  dep: D
+  predecessor: E
+  successor: E
+  /** Recalage proposé pour la tâche (ou phase) successeur (durée conservée). */
   suggestedStart: string
   suggestedEnd: string
 }
@@ -67,28 +77,62 @@ function diffDays(a: string, b: string): number {
 }
 
 /**
- * Conflits de planning : la tâche successeur commence avant la fin de son
- * prérequis (chevauchement réel ; démarrer le jour de fin du prérequis est toléré).
+ * Contrainte imposée par une dépendance, en fonction de son type :
+ * - FS (fin→début, défaut) : le successeur ne démarre pas avant la fin du
+ *   prérequis + lag (lag 0 = démarrer le jour même de la fin est toléré,
+ *   comportement historique du module).
+ * - SS (début→début) : le successeur ne démarre pas avant le début du
+ *   prérequis + lag.
+ * - FF (fin→fin) : le successeur ne finit pas avant la fin du prérequis + lag.
+ * - SF (début→fin) : le successeur ne finit pas avant le début du prérequis + lag.
+ * Le lag est compté en jours ouvrés (fériés France + week-ends exclus).
+ */
+function contrainteDep<E extends EntiteDatee>(
+  type: DependencyType,
+  pred: E,
+  feries: Set<string>,
+  lag: number
+): { champ: 'debut' | 'fin'; min: string } | null {
+  if (!pred.date_debut || !pred.date_fin) return null
+  switch (type) {
+    case 'FS': return { champ: 'debut', min: addJoursOuvres(pred.date_fin, lag, feries) }
+    case 'SS': return { champ: 'debut', min: addJoursOuvres(pred.date_debut, lag, feries) }
+    case 'FF': return { champ: 'fin', min: addJoursOuvres(pred.date_fin, lag, feries) }
+    case 'SF': return { champ: 'fin', min: addJoursOuvres(pred.date_debut, lag, feries) }
+  }
+}
+
+/**
+ * Conflits de planning : la contrainte de la dépendance (selon son type et
+ * son lag) n'est pas respectée par le successeur. Le recalage proposé
+ * conserve la durée OUVRÉE de la tâche successeur.
  * Ne considère que les dépendances dont les deux tâches ont des dates.
  */
-export function findDependencyConflicts(
-  tasks: ProjectTask[],
-  deps: TaskDependency[]
-): DependencyConflict[] {
+export function findDependencyConflicts<E extends EntiteDatee = ProjectTask, D extends DependanceTypee = TaskDependency>(
+  tasks: E[],
+  deps: D[],
+  feries: Set<string>
+): DependencyConflict<E, D>[] {
   const byId = new Map(tasks.map((t) => [t.id, t]))
-  const out: DependencyConflict[] = []
+  const out: DependencyConflict<E, D>[] = []
   for (const dep of deps) {
     const pred = byId.get(dep.predecessor_id)
     const succ = byId.get(dep.successor_id)
-    if (!pred?.date_fin || !succ?.date_debut || !succ.date_fin) continue
-    if (succ.date_debut < pred.date_fin) {
-      const duree = Math.max(0, diffDays(succ.date_debut, succ.date_fin))
+    if (!pred?.date_fin || !pred.date_debut || !succ?.date_debut || !succ.date_fin) continue
+    const c = contrainteDep(dep.type ?? 'FS', pred, feries, dep.lag_days ?? 0)
+    if (!c) continue
+    const valeur = c.champ === 'debut' ? succ.date_debut : succ.date_fin
+    if (valeur < c.min) {
+      const dureeOuvree = Math.max(1, joursOuvresEntre(succ.date_debut, succ.date_fin, feries))
+      const suggestedStart = c.champ === 'debut'
+        ? c.min
+        : addJoursOuvres(c.min, -(dureeOuvree - 1), feries)
       out.push({
         dep,
         predecessor: pred,
         successor: succ,
-        suggestedStart: pred.date_fin,
-        suggestedEnd: addDays(pred.date_fin, duree),
+        suggestedStart,
+        suggestedEnd: addJoursOuvres(suggestedStart, dureeOuvree - 1, feries),
       })
     }
   }
@@ -132,16 +176,20 @@ export function computeCpm(tasks: ProjectTask[], deps: TaskDependency[]): CpmRes
     dated.map((t) => [t.id, Math.max(1, diffDays(t.date_debut!, t.date_fin!) + 1)])
   )
 
-  // Graphe restreint aux tâches datées
-  const succs = new Map<string, string[]>()
-  const preds = new Map<string, string[]>()
+  // Graphe restreint aux tâches datées — on conserve la dépendance complète
+  // (type + lag) sur chaque arête pour appliquer la bonne contrainte CPM.
+  type Arete = { autre: string; type: DependencyType; lag: number }
+  const succs = new Map<string, Arete[]>()
+  const preds = new Map<string, Arete[]>()
   const indeg = new Map<string, number>(dated.map((t) => [t.id, 0]))
   for (const d of deps) {
     if (!ids.has(d.predecessor_id) || !ids.has(d.successor_id)) continue
+    const type = d.type ?? 'FS'
+    const lag = d.lag_days ?? 0
     if (!succs.has(d.predecessor_id)) succs.set(d.predecessor_id, [])
-    succs.get(d.predecessor_id)!.push(d.successor_id)
+    succs.get(d.predecessor_id)!.push({ autre: d.successor_id, type, lag })
     if (!preds.has(d.successor_id)) preds.set(d.successor_id, [])
-    preds.get(d.successor_id)!.push(d.predecessor_id)
+    preds.get(d.successor_id)!.push({ autre: d.predecessor_id, type, lag })
     indeg.set(d.successor_id, (indeg.get(d.successor_id) ?? 0) + 1)
   }
 
@@ -153,30 +201,58 @@ export function computeCpm(tasks: ProjectTask[], deps: TaskDependency[]): CpmRes
     const id = queue.shift()!
     order.push(id)
     for (const s of succs.get(id) ?? []) {
-      const v = (indegWork.get(s) ?? 0) - 1
-      indegWork.set(s, v)
-      if (v === 0) queue.push(s)
+      const v = (indegWork.get(s.autre) ?? 0) - 1
+      indegWork.set(s.autre, v)
+      if (v === 0) queue.push(s.autre)
     }
   }
 
-  // Passe avant : ES / EF
+  // Passe avant : ES / EF. Contrainte selon le type du lien (prédécesseur p,
+  // successeur courant) : FS → ES ≥ EF_p + lag ; SS → ES ≥ ES_p + lag ;
+  // FF → EF ≥ EF_p + lag ; SF → EF ≥ ES_p + lag.
   const es = new Map<string, number>()
   const ef = new Map<string, number>()
   for (const id of order) {
-    const start = Math.max(0, ...(preds.get(id) ?? []).map((p) => ef.get(p) ?? 0))
+    const duree = dur.get(id)!
+    let start = 0
+    for (const a of preds.get(id) ?? []) {
+      const esP = es.get(a.autre) ?? 0
+      const efP = ef.get(a.autre) ?? 0
+      let minStart: number
+      switch (a.type) {
+        case 'FS': minStart = efP + a.lag; break
+        case 'SS': minStart = esP + a.lag; break
+        case 'FF': minStart = efP + a.lag - duree; break
+        case 'SF': minStart = esP + a.lag - duree; break
+      }
+      if (minStart > start) start = minStart
+    }
     es.set(id, start)
-    ef.set(id, start + dur.get(id)!)
+    ef.set(id, start + duree)
   }
   const projectLength = Math.max(0, ...order.map((id) => ef.get(id)!))
 
-  // Passe arrière : LS / LF
+  // Passe arrière : LS / LF (contraintes symétriques de la passe avant)
   const ls = new Map<string, number>()
   const lf = new Map<string, number>()
   for (let i = order.length - 1; i >= 0; i--) {
     const id = order[i]
-    const end = Math.min(projectLength, ...(succs.get(id) ?? []).map((s) => ls.get(s) ?? projectLength))
+    const duree = dur.get(id)!
+    let end = projectLength
+    for (const a of succs.get(id) ?? []) {
+      const lsS = ls.get(a.autre) ?? projectLength
+      const lfS = lf.get(a.autre) ?? projectLength
+      let maxEnd: number
+      switch (a.type) {
+        case 'FS': maxEnd = lsS - a.lag; break
+        case 'SS': maxEnd = lsS - a.lag + duree; break
+        case 'FF': maxEnd = lfS - a.lag; break
+        case 'SF': maxEnd = lfS - a.lag + duree; break
+      }
+      if (maxEnd < end) end = maxEnd
+    }
     lf.set(id, end)
-    ls.set(id, end - dur.get(id)!)
+    ls.set(id, end - duree)
   }
 
   // Marges + profondeur topologique (colonnes d'un diagramme PERT)
@@ -184,7 +260,7 @@ export function computeCpm(tasks: ProjectTask[], deps: TaskDependency[]): CpmRes
   const depth = new Map<string, number>()
   for (const id of order) {
     slack.set(id, (ls.get(id) ?? 0) - (es.get(id) ?? 0))
-    depth.set(id, Math.max(-1, ...(preds.get(id) ?? []).map((p) => depth.get(p) ?? -1)) + 1)
+    depth.set(id, Math.max(-1, ...(preds.get(id) ?? []).map((p) => depth.get(p.autre) ?? -1)) + 1)
   }
 
   return { order, es, ef, ls, lf, slack, dur, projectLength, depth }
@@ -220,13 +296,65 @@ export function completionRate(tasks: ProjectTask[], phaseId?: string): number {
 }
 
 /**
+ * Avancement global du projet (0–100), pondéré par PHASE plutôt que par
+ * simple moyenne des tâches : une phase sans aucune tâche renseignée compte
+ * pour 0 % sur toute sa durée, au lieu d'être invisible du calcul. Sans quoi
+ * un projet peut afficher 100 % alors que seules quelques tâches d'une
+ * phase précoce sont terminées et que les phases suivantes (souvent les
+ * plus longues) n'ont encore aucune tâche créée.
+ * Les tâches sans phase sont comptées individuellement (poids = leur durée).
+ */
+export function projectCompletionRate(tasks: ProjectTask[], phases: ProjectPhase[]): number {
+  if (phases.length === 0) return completionRate(tasks)
+
+  let poids = 0
+  let somme = 0
+  for (const p of phases) {
+    const w = p.date_debut && p.date_fin
+      ? Math.max(1, diffDays(p.date_debut, p.date_fin) + 1)
+      : 1
+    poids += w
+    somme += w * completionRate(tasks, p.id)
+  }
+  for (const t of tasks.filter((t) => !t.phase_id)) {
+    const w = t.date_debut && t.date_fin
+      ? Math.max(1, diffDays(t.date_debut, t.date_fin) + 1)
+      : 1
+    poids += w
+    somme += w * (t.avancement ?? 0)
+  }
+  return poids === 0 ? 0 : Math.round(somme / poids)
+}
+
+/**
+ * Statut d'une phase, calculé automatiquement à partir de ses tâches — pas
+ * de champ modifiable en base (une phase n'est qu'une enveloppe, son état
+ * n'a de sens que dérivé de ce qu'elle contient) :
+ * - aucune tâche, ou toutes « à faire » et 0 % d'avancement → à faire
+ * - au moins une tâche bloquée → bloqué
+ * - toutes les tâches sont « fait » (statut, OU avancement à 100 % même si
+ *   le statut n'a pas été mis à jour — un avancement à 100 % vaut « fait »
+ *   quel que soit le libellé encore affiché) → fait
+ * - sinon (au moins une tâche entamée) → en cours
+ */
+export function phaseStatus(tasks: ProjectTask[], phaseId: string): ProjectTaskStatus {
+  const scope = tasks.filter((t) => t.phase_id === phaseId)
+  if (scope.length === 0) return 'a_faire'
+  if (scope.some((t) => t.statut === 'bloque')) return 'bloque'
+  const estFait = (t: ProjectTask) => t.statut === 'fait' || (t.avancement ?? 0) >= 100
+  if (scope.every(estFait)) return 'fait'
+  if (scope.some((t) => t.statut !== 'a_faire' || (t.avancement ?? 0) > 0)) return 'en_cours'
+  return 'a_faire'
+}
+
+/**
  * Dépendances non traçables dans le Gantt : au moins une des deux tâches
  * n'a pas de dates (la flèche ne peut pas être dessinée).
  */
-export function findUntrackedDependencies(
-  tasks: ProjectTask[],
-  deps: TaskDependency[]
-): TaskDependency[] {
+export function findUntrackedDependencies<E extends EntiteDatee = ProjectTask, D extends DependanceTypee = TaskDependency>(
+  tasks: E[],
+  deps: D[]
+): D[] {
   const byId = new Map(tasks.map((t) => [t.id, t]))
   return deps.filter((dep) => {
     const pred = byId.get(dep.predecessor_id)

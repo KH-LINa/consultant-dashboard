@@ -121,6 +121,7 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceWithContact[] }) 
                         id={inv.id}
                         titre={inv.titre}
                         contactEmail={inv.contact?.email ?? null}
+                        dejaEnvoye={inv.statut !== 'brouillon'}
                       />
                       {inv.statut !== 'payée' && inv.statut !== 'annulée' && (
                         <Button

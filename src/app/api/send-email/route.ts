@@ -7,6 +7,7 @@ import { getSettings } from '@/lib/settings'
 import { QuotePDF } from '@/components/devis/quote-pdf'
 import { InvoicePDF } from '@/components/factures/invoice-pdf'
 import { checkRateLimit, clientId } from '@/lib/rate-limit'
+import { resolveAppBaseUrl } from '@/lib/base-url'
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
     }) as any)
 
     // Lien public d'acceptation
-    const origin = new URL(request.url).origin
+    const origin = resolveAppBaseUrl(request)
     acceptUrl = `${origin}/accepter/${quote.public_token}`
 
     // Reply-to avec token pour l'archivage des réponses email (plus-addressing)
@@ -67,9 +68,6 @@ export async function POST(request: NextRequest) {
       const [local, domain] = settings.email_expediteur.split('@')
       reply_to = `${local}+devis-${quote.public_token}@${domain}`
     }
-
-    // Marquer comme envoyé
-    await supabase.from('quotes').update({ statut: 'envoyé' }).eq('id', id)
 
   } else {
     const { data: invoice } = await supabase.from('invoices').select('*').eq('id', id).single()
@@ -88,9 +86,6 @@ export async function POST(request: NextRequest) {
       email: settings.consultant_email,
       telephone: settings.consultant_telephone,
     }) as any)
-
-    // Marquer comme envoyée
-    await supabase.from('invoices').update({ statut: 'envoyée' }).eq('id', id)
   }
 
   const resend = new Resend(settings.resend_api_key)
@@ -126,6 +121,14 @@ export async function POST(request: NextRequest) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // Statut mis à jour uniquement après un envoi Resend réussi — sinon le
+  // document reste marqué comme non envoyé, cohérent avec la réalité.
+  if (type === 'devis') {
+    await supabase.from('quotes').update({ statut: 'envoyé' }).eq('id', id)
+  } else {
+    await supabase.from('invoices').update({ statut: 'envoyée' }).eq('id', id)
   }
 
   return NextResponse.json({ success: true })

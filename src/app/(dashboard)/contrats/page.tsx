@@ -5,8 +5,8 @@ import Link from 'next/link'
 import type { ContractStatus } from '@/lib/types'
 import { FileSignature } from 'lucide-react'
 
-const STATUTS: { value: ContractStatus | 'tous'; label: string }[] = [
-  { value: 'tous',      label: 'Tous' },
+const STATUTS: { value: ContractStatus | 'actifs'; label: string }[] = [
+  { value: 'actifs',    label: 'Actifs' },
   { value: 'brouillon', label: 'Brouillons' },
   { value: 'envoye',    label: 'Envoyés' },
   { value: 'signe',     label: 'Signés' },
@@ -19,14 +19,18 @@ export default async function ContratsPage({
   searchParams: { statut?: string }
 }) {
   const supabase = await createClient()
-  const filtre = (searchParams.statut ?? 'tous') as ContractStatus | 'tous'
+  const filtre = (searchParams.statut ?? 'actifs') as ContractStatus | 'actifs'
 
   let query = supabase
     .from('contracts')
     .select('*, contact:contacts(nom, entreprise, email)')
     .order('created_at', { ascending: false })
 
-  if (filtre !== 'tous') {
+  // "Actifs" = tout sauf archivé (un contrat archivé ne doit plus apparaître
+  // dans la liste par défaut, conformément au message affiché lors de l'archivage).
+  if (filtre === 'actifs') {
+    query = query.neq('statut', 'archive')
+  } else {
     query = query.eq('statut', filtre)
   }
 
@@ -34,7 +38,7 @@ export default async function ContratsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Contrats</h1>
           <p className="text-gray-500 mt-1">{contracts?.length ?? 0} contrat{(contracts?.length ?? 0) !== 1 ? 's' : ''}</p>
@@ -46,7 +50,7 @@ export default async function ContratsPage({
         {STATUTS.map(({ value, label }) => (
           <Link
             key={value}
-            href={value === 'tous' ? '/contrats' : `/contrats?statut=${value}`}
+            href={value === 'actifs' ? '/contrats' : `/contrats?statut=${value}`}
             className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
               filtre === value
                 ? 'bg-blue-600 text-white border-blue-600'
@@ -63,7 +67,7 @@ export default async function ContratsPage({
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center gap-3">
             <FileSignature className="h-10 w-10 text-gray-300" />
-            <p className="text-gray-500 font-medium">Aucun contrat{filtre !== 'tous' ? ` (${filtre})` : ''}</p>
+            <p className="text-gray-500 font-medium">Aucun contrat{filtre !== 'actifs' ? ` (${filtre})` : ''}</p>
             <p className="text-sm text-gray-400">
               Ouvrez un devis accepté et cliquez sur « Générer le contrat ».
             </p>

@@ -1,0 +1,92 @@
+import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import { MonPlanningView } from '@/components/planning/mon-planning-view'
+import { SignalerEvenementDialog } from '@/components/planning/signaler-evenement-dialog'
+import { Card, CardContent } from '@/components/ui/card'
+import { CalendarDays } from 'lucide-react'
+import type { ProjectTask, Mission, ResourceAssignment } from '@/lib/types'
+
+export default async function MonPlanningPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data: profile } = await supabase.from('profiles').select('role, nom, collaborateur_id, resource_id').eq('id', user.id).single()
+
+  if (!profile?.collaborateur_id && !profile?.resource_id) {
+    return (
+      <div className="space-y-6 max-w-2xl">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Mon planning</h1>
+        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center gap-3">
+            <CalendarDays className="h-10 w-10 text-gray-300" />
+            <p className="text-gray-500 font-medium">Votre compte n&apos;est pas encore rattaché à une fiche collaborateur ou ressource</p>
+            <p className="text-sm text-gray-400 max-w-sm">
+              Aucune tâche ne peut être affichée tant qu&apos;un administrateur n&apos;a pas lié votre compte à
+              une fiche{profile?.role === 'admin' ? (
+                <> depuis <Link href="/parametres/utilisateurs" className="text-blue-600 hover:underline">Paramètres → Utilisateurs</Link></>
+              ) : '.'}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const [{ data: tasks }, { data: missions }, { data: assignments }] = await Promise.all([
+    profile.collaborateur_id
+      ? supabase
+          .from('project_tasks')
+          .select('*, project:projects(id, titre)')
+          .eq('responsable_id', profile.collaborateur_id)
+          .order('date_fin', { ascending: true, nullsFirst: false })
+      : Promise.resolve({ data: [] }),
+    profile.collaborateur_id
+      ? supabase
+          .from('missions')
+          .select('*, contact:contacts(nom, entreprise)')
+          .eq('responsable_id', profile.collaborateur_id)
+          .order('date_fin_prevue', { ascending: true, nullsFirst: false })
+      : Promise.resolve({ data: [] }),
+    profile.resource_id
+      ? supabase
+          .from('resource_assignments')
+          .select('*, project:projects(id, titre)')
+          .eq('resource_id', profile.resource_id)
+      : Promise.resolve({ data: [] }),
+  ])
+
+  const mesTaches = ((tasks ?? []) as ProjectTask[]).map((t) => ({ id: t.id, titre: t.titre }))
+
+  // Nombre de commentaires par tâche — préchargé pour afficher "Commentaires
+  // (n)" sans avoir à dépiler chaque tâche (ex. réponse d'un manager).
+  const taskIds = mesTaches.map((t) => t.id)
+  const { data: commentsData } = taskIds.length
+    ? await supabase.from('task_comments').select('task_id').in('task_id', taskIds)
+    : { data: [] }
+  const commentCounts = (commentsData ?? []).reduce<Record<string, number>>((acc, c) => {
+    acc[c.task_id] = (acc[c.task_id] ?? 0) + 1
+    return acc
+  }, {})
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Mon planning</h1>
+          <p className="text-gray-500 mt-1">Bonjour {profile.nom} — vos tâches et missions, tous projets confondus</p>
+        </div>
+        <SignalerEvenementDialog tasks={mesTaches} />
+      </div>
+      <MonPlanningView
+        tasks={(tasks ?? []) as (ProjectTask & { project: { id: string; titre: string } | null })[]}
+        missions={(missions ?? []) as Mission[]}
+        assignments={(assignments ?? []) as ResourceAssignment[]}
+        commentCounts={commentCounts}
+      />
+    </div>
+  )
+}

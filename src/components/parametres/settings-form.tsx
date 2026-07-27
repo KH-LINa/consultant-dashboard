@@ -10,9 +10,28 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
-import { User, Mail, Key, Eye, EyeOff, Landmark, Bell } from 'lucide-react'
+import { User, Mail, Key, Eye, EyeOff, Landmark, Bell, Lock } from 'lucide-react'
 
-export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
+// Clés réservées à l'admin (identifiant technique d'envoi d'emails + statut
+// fiscal personnel) — doit rester synchronisé avec la RLS de la table
+// settings (voir supabase-settings-manager-restriction-migration.sql). Un
+// manager qui les soumettrait quand même serait de toute façon bloqué côté
+// base ; ce filtre évite juste l'erreur inutile.
+const ADMIN_ONLY_KEYS: (keyof ConsultantSettings)[] = [
+  'resend_api_key', 'email_expediteur', 'notification_email',
+  'remuneration_brute_mensuelle', 'taux_charges_patronales', 'taux_charges_salariales',
+]
+
+function SectionReserveeAdmin() {
+  return (
+    <p className="flex items-center gap-2 text-sm text-gray-400 py-2">
+      <Lock className="h-3.5 w-3.5" />
+      Réservé à l&apos;administrateur
+    </p>
+  )
+}
+
+export function SettingsForm({ settings, isAdmin }: { settings: ConsultantSettings; isAdmin: boolean }) {
   const supabase = createClient()
   const [form, setForm] = useState({ ...settings })
   const [saving, setSaving] = useState(false)
@@ -26,11 +45,13 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
     e.preventDefault()
     setSaving(true)
 
-    const rows = Object.entries(form).map(([key, value]) => ({
-      key,
-      value: value ?? '',
-      updated_at: new Date().toISOString(),
-    }))
+    const rows = Object.entries(form)
+      .filter(([key]) => isAdmin || !ADMIN_ONLY_KEYS.includes(key as keyof ConsultantSettings))
+      .map(([key, value]) => ({
+        key,
+        value: value ?? '',
+        updated_at: new Date().toISOString(),
+      }))
 
     const { error } = await supabase.from('settings').upsert(rows, { onConflict: 'user_id,key' })
 
@@ -54,7 +75,7 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
           <CardDescription>Ces informations apparaissent sur vos devis et factures PDF</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Nom complet *</Label>
               <Input value={form.consultant_nom} onChange={(e) => set('consultant_nom', e.target.value)} placeholder="Jean Dupont" />
@@ -64,7 +85,7 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
               <Input value={form.consultant_siret} onChange={(e) => set('consultant_siret', e.target.value)} placeholder="123 456 789 00012" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Email professionnel</Label>
               <Input type="email" value={form.consultant_email} onChange={(e) => set('consultant_email', e.target.value)} placeholder="jean@consultant-ia.fr" />
@@ -96,6 +117,8 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {!isAdmin ? <SectionReserveeAdmin /> : (
+          <>
           <div className="space-y-2">
             <Label className="flex items-center gap-1">
               <Key className="h-3.5 w-3.5" />
@@ -142,6 +165,8 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
               Adresse qui reçoit une alerte à chaque demande envoyée depuis le site vitrine. Si vide, l&apos;email professionnel ci-dessus est utilisé.
             </p>
           </div>
+          </>
+          )}
         </CardContent>
       </Card>
 
@@ -159,6 +184,8 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {!isAdmin ? <SectionReserveeAdmin /> : (
+          <>
           <div className="space-y-2">
             <Label>Rémunération brute mensuelle du président (€)</Label>
             <Input
@@ -169,7 +196,7 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
             />
             <p className="text-xs text-gray-400">Montant brut décidé, avant charges sociales et IR personnel</p>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Taux charges patronales (%)</Label>
               <Input
@@ -195,6 +222,8 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
             L&apos;impôt sur les sociétés (15% jusqu&apos;à 42 500 € de résultat, 25% au-delà) est calculé
             automatiquement dans le bilan, ces taux ne changent pas selon la structure.
           </p>
+          </>
+          )}
         </CardContent>
       </Card>
 
@@ -226,6 +255,58 @@ export function SettingsForm({ settings }: { settings: ConsultantSettings }) {
           <p className="text-xs text-gray-400 mt-2">
             Devis : compté depuis l'envoi · Factures : compté depuis l'échéance (ou l'émission).
             Chaque relance n'est envoyée qu'une seule fois par palier.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Surveillance des plannings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Bell className="h-4 w-4 text-amber-500" />
+            Surveillance des plannings
+          </CardTitle>
+          <CardDescription>
+            Email quotidien récapitulant, pour tous les projets actifs : tâches et jalons en retard,
+            conflits de dépendances, échéances des 3 prochains jours, doubles réservations d'un
+            collaborateur ou d'une ressource sur plusieurs chantiers en même temps, et ressources
+            affectées à une tâche pendant une période d'indisponibilité (absence, congé, maladie...)
+            (envoyé uniquement s'il y a quelque chose à signaler)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="surveillance_planning_auto"
+              checked={form.surveillance_planning_auto === 'true'}
+              onChange={(e) => set('surveillance_planning_auto', e.target.checked ? 'true' : 'false')}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            <Label htmlFor="surveillance_planning_auto" className="cursor-pointer">
+              Activer la surveillance automatique des plannings
+            </Label>
+          </div>
+          <p className="text-xs text-gray-400 mt-2">
+            Envoyé à l&apos;adresse de notification ci-dessus (ou à défaut l&apos;email professionnel).
+          </p>
+
+          <div className="flex items-center gap-2 mt-4 pt-4 border-t">
+            <input
+              type="checkbox"
+              id="surveillance_recap_ressources_auto"
+              checked={form.surveillance_recap_ressources_auto === 'true'}
+              onChange={(e) => set('surveillance_recap_ressources_auto', e.target.checked ? 'true' : 'false')}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            <Label htmlFor="surveillance_recap_ressources_auto" className="cursor-pointer">
+              Envoyer aussi un récap quotidien à chaque ressource
+            </Label>
+          </div>
+          <p className="text-xs text-gray-400 mt-2">
+            Un email individuel est envoyé à l&apos;adresse renseignée sur chaque ressource humaine
+            (page Ressources), listant ses affectations en cours (projet, tâche si précisée, heures/budget).
+            Envoyé uniquement aux ressources ayant au moins une affectation à signaler.
           </p>
         </CardContent>
       </Card>

@@ -160,7 +160,7 @@ export default async function DashboardPage() {
               { label: 'Clients', count: nbClients, color: 'bg-green-400' },
               { label: 'Inactifs', count: contacts.length - nbProspects - nbClients, color: 'bg-gray-300' },
             ].map(({ label, count, color }) => (
-              <div key={label} className="flex items-center justify-between">
+              <div key={label} className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2">
                   <span className={`w-2.5 h-2.5 rounded-full ${color}`} />
                   <span className="text-sm text-gray-600">{label}</span>

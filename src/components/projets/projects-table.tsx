@@ -96,7 +96,7 @@ export function ProjectsTable({ projects }: { projects: ProjectRow[] }) {
                     onValueChange={(v) => updateField(p.id, 'statut', v)}
                   >
                     <SelectTrigger className="h-8 w-[140px]">
-                      <SelectValue />
+                      <SelectValue>{(v: string) => statutLabel[v as ProjectStatus] ?? v}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {(Object.keys(statutLabel) as ProjectStatus[]).map((s) => (

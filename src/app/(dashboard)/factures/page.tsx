@@ -22,7 +22,7 @@ export default async function FacturesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Factures</h1>
           <p className="text-gray-500 mt-1">{list.length} facture(s)</p>
@@ -36,7 +36,7 @@ export default async function FacturesPage() {
       </div>
 
       {/* KPIs rapides */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-3">

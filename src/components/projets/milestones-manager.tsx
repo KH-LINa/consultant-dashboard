@@ -55,29 +55,35 @@ export function MilestonesManager({ projectId, milestones }: { projectId: string
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        {milestones.map((m) => (
-          <div key={m.id} className="grid grid-cols-12 gap-2 items-center group">
-            <Input className="col-span-5 h-9" defaultValue={m.titre}
-              onBlur={(e) => e.target.value !== m.titre && update(m.id, 'titre', e.target.value)} />
-            <Input type="date" className="col-span-3 h-9" defaultValue={m.date_echeance ?? ''}
-              onChange={(e) => update(m.id, 'date_echeance', e.target.value || null)} />
-            <div className="col-span-3">
-              <Select value={m.statut} onValueChange={(v) => update(m.id, 'statut', v)}>
-                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(statutLabel) as MilestoneStatus[]).map((s) => (
-                    <SelectItem key={s} value={s}>{statutLabel[s]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button variant="ghost" size="sm"
-              onClick={() => remove(m.id)}
-              className="col-span-1 h-9 w-9 p-0 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100">
-              <Trash2 className="h-4 w-4" />
-            </Button>
+        <div className="overflow-x-auto">
+          <div className="min-w-[480px] space-y-2">
+            {milestones.map((m) => (
+              <div key={m.id} className="grid grid-cols-12 gap-2 items-center group">
+                <Input className="col-span-5 h-9" defaultValue={m.titre}
+                  onBlur={(e) => e.target.value !== m.titre && update(m.id, 'titre', e.target.value)} />
+                <Input type="date" className="col-span-3 h-9" defaultValue={m.date_echeance ?? ''}
+                  onChange={(e) => update(m.id, 'date_echeance', e.target.value || null)} />
+                <div className="col-span-3">
+                  <Select value={m.statut} onValueChange={(v) => update(m.id, 'statut', v)}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue>{(v: string) => statutLabel[v as MilestoneStatus] ?? v}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(statutLabel) as MilestoneStatus[]).map((s) => (
+                        <SelectItem key={s} value={s}>{statutLabel[s]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button variant="ghost" size="sm"
+                  onClick={() => remove(m.id)}
+                  className="col-span-1 h-9 w-9 p-0 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
         <form onSubmit={addMilestone} className="flex gap-2 pt-2 border-t">
           <Input value={titre} onChange={(e) => setTitre(e.target.value)} placeholder="Nouveau jalon (ex: Livraison V1)" className="h-9 flex-1" />
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9 w-[150px]" />

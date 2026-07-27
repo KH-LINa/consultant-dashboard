@@ -55,6 +55,40 @@ export interface Collaborateur {
   created_at: string
 }
 
+// Rôle d'accès à l'outil (à ne pas confondre avec Collaborateur.role, qui
+// est un intitulé de poste libre) : admin = accès complet + gestion des
+// comptes, manager = accès complet sauf gestion des comptes, collaborateur
+// = accès limité à son propre planning (voir supabase-profiles-migration.sql).
+export type UserRole = 'admin' | 'manager' | 'collaborateur'
+
+export interface Profile {
+  id: string
+  email: string
+  nom: string
+  role: UserRole
+  collaborateur_id: string | null
+  resource_id: string | null
+  created_at: string
+}
+
+// Notifications d'événements générées automatiquement par des triggers
+// (nouvelle tâche assignée, planning modifié, nouveau commentaire, nouveau
+// signalement) — voir supabase-notifications-migration.sql et
+// supabase-comments-signalements-migration.sql. profile_id = destinataire.
+export type NotificationType = 'tache_assignee' | 'planning_modifie' | 'commentaire_tache' | 'signalement'
+
+export interface Notification {
+  id: string
+  profile_id: string
+  type: NotificationType
+  titre: string
+  message: string | null
+  lien: string | null
+  task_id: string | null
+  read_at: string | null
+  created_at: string
+}
+
 export interface ProjectPhase {
   id: string
   project_id: string
@@ -85,20 +119,113 @@ export interface ProjectTask {
   id: string
   project_id: string
   phase_id: string | null
+  // Tâche parente pour une sous-tâche (imbriquée sous elle dans le Gantt) ; null = tâche de premier niveau.
+  parent_task_id: string | null
   responsable_id: string | null
   titre: string
   date_debut: string | null
   date_fin: string | null
+  // Heure optionnelle (format "HH:MM"), en plus des dates — sans heure,
+  // une tâche est considérée comme occupant la journée entière.
+  heure_debut: string | null
+  heure_fin: string | null
   statut: ProjectTaskStatus
   avancement: number
   ordre: number
   created_at: string
+  // Regroupe les occurrences d'une tâche récurrente (même série) ; null = tâche isolée.
+  serie_id: string | null
 }
+
+// Fil de commentaires sur une tâche (ex. cause d'un retard ou d'un blocage)
+// — voir supabase-comments-signalements-migration.sql. auteur_nom est
+// dénormalisé à l'insertion (pas de join vers profiles, bloqué par sa RLS
+// pour un tiers).
+export interface TaskComment {
+  id: string
+  task_id: string
+  auteur_id: string
+  auteur_nom: string
+  contenu: string
+  created_at: string
+}
+
+export type SignalementType = 'retard' | 'imprevu' | 'blocage' | 'materiel' | 'autre'
+
+// Événement libre signalé par un utilisateur (imprévu, retard trajet,
+// problème matériel...), toujours notifié au staff (admin/manager).
+export interface Signalement {
+  id: string
+  auteur_id: string
+  auteur_nom: string
+  type: SignalementType
+  titre: string
+  message: string
+  task_id: string | null
+  created_at: string
+}
+
+export type ResourceType = 'humain' | 'materiel'
+
+export interface Resource {
+  id: string
+  nom: string
+  type: ResourceType
+  // €/h ; 0 = coût non chiffré (le coût estimé n'utilise alors que le budget)
+  cout_horaire: number
+  notes: string | null
+  // Ressource humaine : peut préremplir l'invitation d'un compte de connexion.
+  email: string | null
+  created_at: string
+}
+
+export interface ResourceAssignment {
+  id: string
+  resource_id: string
+  project_id: string
+  task_id: string | null
+  heures: number
+  budget: number
+  created_at: string
+  project?: Pick<Project, 'id' | 'titre'>
+  task?: Pick<ProjectTask, 'id' | 'titre'>
+}
+
+export type ResourceUnavailabilityMotif = 'absent' | 'conge' | 'maladie' | 'autre'
+
+// Période où une ressource n'est PAS disponible (calendrier du module Ressources).
+export interface ResourceUnavailability {
+  id: string
+  resource_id: string
+  date_debut: string
+  date_fin: string
+  motif: ResourceUnavailabilityMotif
+  note: string | null
+  created_at: string
+}
+
+// Types de liens MS Project : FS = fin→début (défaut), SS = début→début,
+// FF = fin→fin, SF = début→fin. En français : FD / DD / FF / DF.
+export type DependencyType = 'FS' | 'SS' | 'FF' | 'SF'
 
 export interface TaskDependency {
   id: string
   predecessor_id: string
   successor_id: string
+  type: DependencyType
+  // Délai (positif) ou avance (négatif) en jours ouvrés appliqué à la contrainte
+  lag_days: number
+  created_at: string
+}
+
+// Même modèle que TaskDependency (type + lag), mais reliant des project_phases
+// entre elles (table phase_dependencies) plutôt que des project_tasks.
+export interface PhaseDependency {
+  id: string
+  predecessor_id: string
+  successor_id: string
+  type: DependencyType
+  lag_days: number
   created_at: string
 }
 

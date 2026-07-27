@@ -10,13 +10,17 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Task } from 'gantt-task-react'
+import { Plus, Scissors, Trash2 } from 'lucide-react'
+import { joursOuvresEntre } from '@/lib/jours-ouvres'
+import { toLocalISO } from '@/lib/gantt-deps'
 
-export interface ColWidths { name: number; from: number; to: number }
+export interface ColWidths { name: number; dur: number; from: number; to: number }
 
-const DEFAULT_WIDTHS: ColWidths = { name: 170, from: 110, to: 110 }
+const DEFAULT_WIDTHS: ColWidths = { name: 190, dur: 64, from: 110, to: 110 }
 const MIN_W = 44
 const MAX_W = 420
-const STORAGE_KEY = 'gantt-col-widths-v1'
+// v2 : ajout de la colonne Durée (l'ancien schéma v1 sans `dur` est ignoré)
+const STORAGE_KEY = 'gantt-col-widths-v2'
 
 export function useResizableColumns() {
   const [widths, setWidths] = useState<ColWidths>(() => {
@@ -25,7 +29,7 @@ export function useResizableColumns() {
       const raw = localStorage.getItem(STORAGE_KEY)
       if (raw) {
         const p = JSON.parse(raw)
-        if (typeof p?.name === 'number' && typeof p?.from === 'number' && typeof p?.to === 'number') return p
+        if (typeof p?.name === 'number' && typeof p?.dur === 'number' && typeof p?.from === 'number' && typeof p?.to === 'number') return p
       }
     } catch { /* stockage indisponible : largeurs par défaut */ }
     return DEFAULT_WIDTHS
@@ -78,6 +82,7 @@ function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => v
 
 const COLS: { key: keyof ColWidths; label: string }[] = [
   { key: 'name', label: 'Tâche' },
+  { key: 'dur', label: 'Durée' },
   { key: 'from', label: 'Début' },
   { key: 'to', label: 'Fin' },
 ]
@@ -86,13 +91,45 @@ function fmtDate(d: Date): string {
   return d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+/** Durée en jours OUVRÉS (début et fin inclus, week-ends et fériés exclus) — "—" pour un jalon. */
+function fmtDuree(t: Task, feries: Set<string>): string {
+  if (t.type === 'milestone') return '—'
+  const jours = joursOuvresEntre(toLocalISO(t.start), toLocalISO(t.end), feries)
+  return `${jours} j`
+}
+
+/** Convertit une Date en chaîne "YYYY-MM-DD" attendue par un <input type="date">. */
+function toInputDate(d: Date): string {
+  return toLocalISO(d)
+}
+
 /**
  * Fabrique les deux composants attendus par <Gantt TaskListHeader TaskListTable>,
  * liés aux largeurs courantes et au démarrage du drag.
+ *
+ * titreReel/onRename : t.name porte le libellé DÉCORÉ affiché dans le Gantt
+ * ([initiales] responsable, ⚠ conflit…) — titreReel restitue le titre réel
+ * (phase/tâche/jalon) à éditer, onRename persiste le renommage en base.
+ * onAddTask : ajoute une tâche rattachée à la phase de la ligne cliquée
+ * (ou à la même phase qu'une tâche cliquée) — pas de bouton sur les jalons.
+ * onSplit : fractionne une tâche-feuille en deux segments de travail (ciseaux).
+ * onDelete : supprime une tâche ou sous-tâche (et sa descendance en cascade).
+ * onEditDate : édition directe des colonnes Début/Fin (équivalent au drag sur
+ * la barre graphique — mêmes règles de recalage en jours ouvrés et de cascade
+ * de dépendances, gérées côté appelant).
+ * wbs : numéro hiérarchique de la ligne (1, 1.1, 1.1.1…), vide si non numérotée.
  */
 export function createTaskListComponents(
   widths: ColWidths,
-  startResize: (col: keyof ColWidths, e: React.MouseEvent) => void
+  startResize: (col: keyof ColWidths, e: React.MouseEvent) => void,
+  titreReel: (ganttId: string) => string,
+  onRename: (ganttId: string, nouveauTitre: string) => void,
+  onAddTask: (ganttId: string) => void,
+  onSplit: (ganttId: string) => void,
+  onDelete: (ganttId: string) => void,
+  onEditDate: (ganttId: string, champ: 'debut' | 'fin', valeur: string) => boolean,
+  wbs: (ganttId: string) => string,
+  feries: Set<string>
 ) {
   const Header: React.FC<{ headerHeight: number; fontFamily: string; fontSize: string }> =
     ({ headerHeight, fontFamily, fontSize }) => (
@@ -116,12 +153,16 @@ export function createTaskListComponents(
   }> = ({ rowHeight, fontFamily, fontSize, tasks, onExpanderClick }) => (
     <div style={{ fontFamily, fontSize }}>
       {tasks.map((t) => (
-        <div key={t.id} style={{ height: rowHeight }} className="flex items-center border-b border-gray-50">
+        <div key={t.id} style={{ height: rowHeight }}
+          className={`group flex items-center border-b border-gray-50 ${t.id === 'projet_global' ? 'bg-[#EEEBFA]/60' : ''}`}>
           <div style={{ width: widths.name, minWidth: widths.name }} className="flex items-center gap-1 px-3 overflow-hidden">
-            {t.type === 'project' ? (
+            {wbs(t.id) && (
+              <span className="shrink-0 w-9 text-[10px] tabular-nums text-gray-400">{wbs(t.id)}</span>
+            )}
+            {t.id !== 'projet_global' && t.type === 'project' ? (
               <button
                 onClick={() => onExpanderClick(t)}
-                title={t.hideChildren ? 'Déplier la phase' : 'Replier la phase'}
+                title={t.hideChildren ? 'Déplier' : 'Replier'}
                 className="w-4 shrink-0 text-[10px] text-gray-400 hover:text-gray-700"
               >
                 {t.hideChildren ? '▶' : '▼'}
@@ -130,15 +171,104 @@ export function createTaskListComponents(
               <span className="w-4 shrink-0" />
             ) : null}
             {t.type === 'milestone' && <span className="shrink-0 text-amber-500 text-[10px]">◆</span>}
-            <span className={`truncate ${t.type === 'project' ? 'font-semibold text-gray-800' : 'text-gray-700'}`} title={t.name}>
-              {t.name}
-            </span>
+            <input
+              key={`ti-${t.id}-${titreReel(t.id)}`}
+              defaultValue={titreReel(t.id)}
+              title={titreReel(t.id)}
+              onMouseDown={(e) => e.stopPropagation()}
+              onBlur={(e) => {
+                const v = e.target.value.trim()
+                if (v && v !== titreReel(t.id)) onRename(t.id, v)
+                else e.target.value = titreReel(t.id)
+              }}
+              onKeyDown={(e) => {
+                // gantt-task-react intercepte le keydown sur son wrapper englobant
+                // (raccourcis de défilement clavier) et appelle preventDefault()
+                // sur TOUTE touche, quel que soit l'élément d'origine — ce qui
+                // bloquait la saisie normale dans ce champ. stopPropagation
+                // empêche l'event d'atteindre ce wrapper.
+                e.stopPropagation()
+                if (e.key === 'Enter') e.currentTarget.blur()
+              }}
+              className={`flex-1 min-w-0 truncate bg-transparent border border-transparent outline-none rounded px-1 -mx-1 cursor-text hover:border-gray-300 focus:border-[#534AB7] focus:ring-1 focus:ring-[#534AB7] focus:bg-white ${t.type === 'project' ? 'font-semibold text-gray-800' : 'text-gray-700'}`}
+            />
+            {/* Fractionner : seulement sur une tâche-feuille (type 'task', pas
+                une phase, un jalon, un conteneur de sous-tâches ni le récap) */}
+            {t.type === 'task' && t.id.startsWith('task_') && (
+              <button
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                onClick={() => onSplit(t.id)}
+                title="Fractionner en deux segments (pause au milieu)"
+                className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-amber-500 opacity-0 group-hover:opacity-100"
+              >
+                <Scissors className="h-3 w-3" />
+              </button>
+            )}
+            {t.type !== 'milestone' && t.id !== 'projet_global' && (
+              <button
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                onClick={() => onAddTask(t.id)}
+                title={t.id.startsWith('phase_') ? 'Ajouter une tâche à cette phase' : 'Ajouter une sous-tâche'}
+                className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-[#534AB7] opacity-0 group-hover:opacity-100"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            )}
+            {/* Supprimer : tâches et sous-tâches uniquement (les phases et
+                jalons se suppriment depuis leurs panneaux dédiés) */}
+            {t.id.startsWith('task_') && (
+              <button
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                onClick={() => onDelete(t.id)}
+                title="Supprimer cette tâche (et ses sous-tâches)"
+                className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-red-500 opacity-0 group-hover:opacity-100"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            )}
           </div>
-          <div style={{ width: widths.from, minWidth: widths.from }} className="px-3 truncate text-gray-500">
-            {fmtDate(t.start)}
+          <div style={{ width: widths.dur, minWidth: widths.dur }} title="Jours ouvrés (week-ends et fériés exclus)"
+            className="px-3 truncate text-gray-500 tabular-nums">
+            {fmtDuree(t, feries)}
           </div>
-          <div style={{ width: widths.to, minWidth: widths.to }} className="px-3 truncate text-gray-500">
-            {fmtDate(t.end)}
+          <div style={{ width: widths.from, minWidth: widths.from }} className="px-1 overflow-hidden">
+            {t.id === 'projet_global' ? (
+              <span className="px-2 truncate text-gray-500 block">{fmtDate(t.start)}</span>
+            ) : (
+              <input
+                type="date"
+                key={`db-${t.id}-${toInputDate(t.start)}`}
+                defaultValue={toInputDate(t.start)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  if (!onEditDate(t.id, 'debut', e.target.value)) e.target.value = toInputDate(t.start)
+                }}
+                className="w-full bg-transparent border border-transparent outline-none rounded px-1.5 py-0.5 text-gray-500 cursor-pointer hover:border-gray-300 focus:border-[#534AB7] focus:ring-1 focus:ring-[#534AB7] focus:bg-white"
+              />
+            )}
+          </div>
+          <div style={{ width: widths.to, minWidth: widths.to }} className="px-1 overflow-hidden">
+            {t.id === 'projet_global' ? (
+              <span className="px-2 truncate text-gray-500 block">{fmtDate(t.end)}</span>
+            ) : (
+              <input
+                type="date"
+                key={`df-${t.id}-${toInputDate(t.end)}`}
+                defaultValue={toInputDate(t.end)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  if (!onEditDate(t.id, 'fin', e.target.value)) e.target.value = toInputDate(t.end)
+                }}
+                className="w-full bg-transparent border border-transparent outline-none rounded px-1.5 py-0.5 text-gray-500 cursor-pointer hover:border-gray-300 focus:border-[#534AB7] focus:ring-1 focus:ring-[#534AB7] focus:bg-white"
+              />
+            )}
           </div>
         </div>
       ))}

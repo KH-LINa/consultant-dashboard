@@ -51,7 +51,7 @@ export default async function RelancesPage() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <CardContent className="pt-4 pb-4 flex items-center gap-3">
             <div className="p-2 bg-orange-50 rounded-lg"><Bell className="h-4 w-4 text-orange-500" /></div>

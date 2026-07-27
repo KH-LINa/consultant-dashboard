@@ -9,11 +9,13 @@ import { CreateMissionButton } from '@/components/projets/create-mission-button'
 import { ProjectResponsableSelect } from '@/components/projets/project-responsable-select'
 import { ProjectGantt } from '@/components/projets/project-gantt'
 import { DependenciesManager } from '@/components/projets/dependencies-manager'
+import { PhaseDependenciesManager } from '@/components/projets/phase-dependencies-manager'
 import { ProjectPilotage } from '@/components/projets/project-pilotage'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { FolderKanban, FileText } from 'lucide-react'
 import type { ProjectStatus } from '@/lib/types'
+import { projectCompletionRate } from '@/lib/gantt-deps'
 
 const statutLabel: Record<ProjectStatus, { label: string; cls: string }> = {
   a_demarrer: { label: 'À démarrer', cls: 'bg-gray-100 text-gray-600' },
@@ -50,15 +52,49 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
     ? await supabase.from('task_dependencies').select('*').in('predecessor_id', taskIds)
     : { data: [] }
 
+  // Nombre de commentaires par tâche — préchargé pour afficher "Commentaires
+  // (n)" sans avoir à dépiler chaque tâche pour repérer celles où un
+  // collaborateur a expliqué un retard ou un blocage.
+  const { data: commentsData } = taskIds.length
+    ? await supabase.from('task_comments').select('task_id').in('task_id', taskIds)
+    : { data: [] }
+  const commentCounts = (commentsData ?? []).reduce<Record<string, number>>((acc, c) => {
+    acc[c.task_id] = (acc[c.task_id] ?? 0) + 1
+    return acc
+  }, {})
+
+  // Dépendances entre les PHASES de ce projet (distinctes des dépendances
+  // entre tâches ci-dessus — même modèle FD/DD/FF/DF + délai, mais reliant
+  // des project_phases entre elles).
+  const phaseIds = (phases ?? []).map((p) => p.id)
+  const { data: phaseDependencies } = phaseIds.length
+    ? await supabase.from('phase_dependencies').select('*').in('predecessor_id', phaseIds)
+    : { data: [] }
+
+  // Coût total du projet : affectations de ressources (heures × coût horaire + budget)
+  const { data: assignments } = await supabase
+    .from('resource_assignments')
+    .select('heures, budget, resource:resources(cout_horaire)')
+    .eq('project_id', params.id)
+  const coutTotal = (assignments ?? []).reduce((somme, a: {
+    heures: number; budget: number; resource: { cout_horaire: number } | { cout_horaire: number }[] | null
+  }) => {
+    const res = Array.isArray(a.resource) ? a.resource[0] : a.resource
+    return somme + (a.heures || 0) * (res?.cout_horaire || 0) + (a.budget || 0)
+  }, 0)
+
   const st = statutLabel[project.statut as ProjectStatus]
 
-  // Avancement global = moyenne de l'avancement des tâches
+  // Avancement global = pondéré par phase (une phase sans tâche compte pour
+  // 0 % sur toute sa durée, au lieu d'être ignorée du calcul — voir
+  // projectCompletionRate) plutôt qu'une simple moyenne des tâches, qui
+  // affichait 100 % dès que les seules tâches renseignées étaient terminées
+  // même si les phases suivantes (souvent les plus longues) n'avaient
+  // encore aucune tâche créée.
   const tasksList = tasks ?? []
   const phasesList = phases ?? []
   const milestonesList = milestones ?? []
-  const avancement = tasksList.length > 0
-    ? Math.round(tasksList.reduce((s, t) => s + (t.avancement || 0), 0) / tasksList.length)
-    : 0
+  const avancement = projectCompletionRate(tasksList, phasesList)
 
   // Fenêtre de dates du projet, calculée depuis le planning réel
   // (phases + jalons + tâches + dates propres du projet)
@@ -108,7 +144,9 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
             <div className="h-2.5 rounded-full bg-blue-500 transition-all" style={{ width: `${avancement}%` }} />
           </div>
           <p className="text-xs text-gray-400 mt-2">
-            Moyenne de l'avancement des {tasksList.length} tâche(s).
+            {phasesList.length > 0
+              ? `Pondéré par phase (${phasesList.length} phase(s), ${tasksList.length} tâche(s)) — une phase sans tâche compte pour 0 %.`
+              : `Moyenne de l'avancement des ${tasksList.length} tâche(s).`}
           </p>
           {(projetDateDebut || projetDateFin) && (
             <p className="text-xs text-gray-500 mt-2 pt-2 border-t">
@@ -134,21 +172,26 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
       {/* Planning Gantt interactif */}
       <ProjectGantt
         projectId={project.id}
+        projectTitre={project.titre}
         phases={phasesList}
         tasks={tasksList}
         milestones={milestonesList}
         dependencies={dependencies ?? []}
+        phaseDependencies={phaseDependencies ?? []}
         collaborateurs={collaborateurs ?? []}
+        coutTotal={coutTotal}
       />
 
       <CollaborateursManager collaborateurs={collaborateurs ?? []} />
-      <PhasesManager projectId={project.id} phases={phases ?? []} />
+      <PhasesManager projectId={project.id} phases={phases ?? []} tasks={tasksList} />
+      <PhaseDependenciesManager projectId={project.id} phases={phasesList} dependencies={phaseDependencies ?? []} />
       <MilestonesManager projectId={project.id} milestones={milestones ?? []} />
       <TasksManager
         projectId={project.id}
         tasks={tasksList}
         phases={phases ?? []}
         collaborateurs={collaborateurs ?? []}
+        commentCounts={commentCounts}
       />
       <DependenciesManager projectId={project.id} tasks={tasksList} dependencies={dependencies ?? []} />
 

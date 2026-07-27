@@ -16,6 +16,7 @@ import { toast } from 'sonner'
 
 interface MissionFormProps {
   contacts: { id: string; nom: string; entreprise: string | null }[]
+  projects?: { id: string; titre: string; contact_id: string }[]
   mission?: Mission
   defaultContactId?: string
   defaultProjectId?: string
@@ -24,13 +25,16 @@ interface MissionFormProps {
 
 const NONE = '__none__'
 
-export function MissionForm({ contacts, mission, defaultContactId, defaultProjectId, collaborateurs = [] }: MissionFormProps) {
+export function MissionForm({
+  contacts, projects = [], mission, defaultContactId, defaultProjectId, collaborateurs = [],
+}: MissionFormProps) {
   const router = useRouter()
   const supabase = createClient()
   const isEdit = !!mission
 
   const [form, setForm] = useState({
     contact_id: mission?.contact_id ?? defaultContactId ?? '',
+    project_id: mission?.project_id ?? defaultProjectId ?? NONE,
     titre: mission?.titre ?? '',
     description: mission?.description ?? '',
     statut: (mission?.statut ?? 'a_demarrer') as MissionStatus,
@@ -41,14 +45,22 @@ export function MissionForm({ contacts, mission, defaultContactId, defaultProjec
   })
   const [saving, setSaving] = useState(false)
 
+  // Ne proposer que les projets du client sélectionné (le mode dialogue existant,
+  // ouvert depuis une fiche projet, fixe déjà le projet sans passer par cette liste).
+  const projetsDuClient = form.contact_id
+    ? projects.filter((p) => p.contact_id === form.contact_id)
+    : projects
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.contact_id) { toast.error('Sélectionnez un client'); return }
     if (!form.titre.trim()) { toast.error('Le titre est obligatoire'); return }
     setSaving(true)
 
+    const projectId = form.project_id === NONE ? null : form.project_id
     const payload = {
       contact_id: form.contact_id,
+      project_id: projectId,
       titre: form.titre,
       description: form.description || null,
       statut: form.statut,
@@ -60,12 +72,12 @@ export function MissionForm({ contacts, mission, defaultContactId, defaultProjec
 
     const { error } = isEdit
       ? await supabase.from('missions').update(payload).eq('id', mission!.id)
-      : await supabase.from('missions').insert({ ...payload, project_id: defaultProjectId ?? null })
+      : await supabase.from('missions').insert(payload)
 
     if (error) { toast.error(error.message) }
     else {
       toast.success(isEdit ? 'Mission mise à jour' : 'Mission créée')
-      router.push(defaultProjectId && !isEdit ? `/projets/${defaultProjectId}` : '/missions')
+      router.push(projectId && !isEdit ? `/projets/${projectId}` : '/missions')
       router.refresh()
     }
     setSaving(false)
@@ -78,7 +90,11 @@ export function MissionForm({ contacts, mission, defaultContactId, defaultProjec
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label>Client *</Label>
-            <Select value={form.contact_id} onValueChange={(v) => setForm((p) => ({ ...p, contact_id: v ?? '' }))}>
+            <Select value={form.contact_id} onValueChange={(v) => setForm((p) => {
+              // Si le projet précédemment choisi n'appartient pas au nouveau client, on le désélectionne.
+              const projetEncoreValide = p.project_id === NONE || projects.some((pr) => pr.id === p.project_id && pr.contact_id === v)
+              return { ...p, contact_id: v ?? '', project_id: projetEncoreValide ? p.project_id : NONE }
+            })}>
               <SelectTrigger><SelectValue placeholder="Sélectionner un client" /></SelectTrigger>
               <SelectContent>
                 {contacts.map((c) => (
@@ -88,6 +104,22 @@ export function MissionForm({ contacts, mission, defaultContactId, defaultProjec
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Projet</Label>
+            <Select value={form.project_id} onValueChange={(v) => setForm((p) => ({ ...p, project_id: v ?? NONE }))}>
+              <SelectTrigger><SelectValue placeholder="Aucun projet lié" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>— Aucun projet lié —</SelectItem>
+                {projetsDuClient.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.titre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {form.contact_id && projetsDuClient.length === 0 && (
+              <p className="text-xs text-gray-400">Ce client n&apos;a pas encore de projet.</p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -116,7 +148,7 @@ export function MissionForm({ contacts, mission, defaultContactId, defaultProjec
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Statut</Label>
               <Select value={form.statut} onValueChange={(v) => setForm((p) => ({ ...p, statut: v as MissionStatus }))}>
@@ -137,7 +169,7 @@ export function MissionForm({ contacts, mission, defaultContactId, defaultProjec
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Date de début</Label>
               <Input type="date" value={form.date_debut}

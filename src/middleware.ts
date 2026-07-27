@@ -54,9 +54,40 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  // Un utilisateur déjà connecté qui va sur /login est renvoyé au tableau de bord
-  if (user && pathname.startsWith('/login')) {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+  // Rôle d'accès (admin/manager/collaborateur) — un compte authentifié sans
+  // profil (ex. compte créé manuellement mais jamais rattaché à un rôle)
+  // n'a accès à rien, même connecté.
+  let role: string | null = null
+  if (user) {
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+    role = profile?.role ?? null
+  }
+
+  if (user && !role && !isPublicPage) {
+    return NextResponse.redirect(new URL('/login?erreur=acces_refuse', request.url))
+  }
+
+  // Un utilisateur déjà connecté (avec un rôle valide) qui va sur /login
+  // est renvoyé vers son espace.
+  if (user && role && pathname.startsWith('/login')) {
+    return NextResponse.redirect(new URL(role === 'collaborateur' ? '/mon-planning' : '/dashboard', request.url))
+  }
+
+  // Un collaborateur n'a accès qu'à son planning et ses notifications — tout
+  // le reste de l'outil (contacts, devis, factures, comptabilité, gestion des
+  // utilisateurs...) lui est fermé.
+  if (
+    role === 'collaborateur' && !isPublicPage
+    && !pathname.startsWith('/mon-planning')
+    && !pathname.startsWith('/notifications')
+  ) {
+    return NextResponse.redirect(new URL('/mon-planning', request.url))
+  }
+
+  // La gestion des utilisateurs est réservée à l'admin (le manager a accès
+  // au reste des paramètres, mais pas à la gestion des comptes/rôles).
+  if (role && role !== 'admin' && pathname.startsWith('/parametres/utilisateurs')) {
+    return NextResponse.redirect(new URL('/parametres', request.url))
   }
 
   return supabaseResponse

@@ -16,7 +16,12 @@ export default async function EditContactPage({ params }: { params: { id: string
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Modifier le contact</h1>
-        <p className="text-gray-500 mt-1">{contact.nom}</p>
+        <p className="text-gray-500 mt-1">
+          {contact.nom} · Reçu le{' '}
+          {new Date(contact.created_at).toLocaleString('fr-FR', {
+            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+          })}
+        </p>
       </div>
       <ContactForm contact={contact} />
       <div className="max-w-2xl">
