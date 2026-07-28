@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Pencil, Calendar, Wallet, Clock, FolderGit2, Flag } from 'lucide-react'
 import type { MissionStatus } from '@/lib/types'
+import { RECOMMANDATION_CONFIG } from '@/lib/maturite'
 
 const statutLabel: Record<MissionStatus, { label: string; cls: string }> = {
   a_demarrer: { label: 'À démarrer', cls: 'bg-gray-100 text-gray-600' },
@@ -65,6 +66,11 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
           <div className="flex items-center gap-3 mt-1">
             <h1 className="text-3xl font-bold text-gray-900">{mission.titre}</h1>
             <span className={`text-xs px-2 py-1 rounded-full font-medium ${st.cls}`}>{st.label}</span>
+            {mission.recommandation && (
+              <span className={`text-xs px-2 py-1 rounded-full font-medium ${RECOMMANDATION_CONFIG[mission.recommandation as keyof typeof RECOMMANDATION_CONFIG].cls}`}>
+                {RECOMMANDATION_CONFIG[mission.recommandation as keyof typeof RECOMMANDATION_CONFIG].label}
+              </span>
+            )}
           </div>
           <p className="text-gray-500 mt-1">{mission.contact?.nom}{mission.contact?.entreprise ? ` — ${mission.contact.entreprise}` : ''}</p>
           {(mission as any).responsable && (

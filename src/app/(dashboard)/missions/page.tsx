@@ -75,6 +75,7 @@ export default async function MissionsPage() {
                         total={st.total}
                         done={st.done}
                         heures={st.heures}
+                        recommandation={m.recommandation}
                       />
                     )
                   })}

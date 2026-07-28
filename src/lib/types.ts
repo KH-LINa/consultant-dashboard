@@ -46,6 +46,11 @@ export interface Project {
   date_debut: string | null
   date_fin_prevue: string | null
   responsable_id?: string | null
+  // Date du dernier point de suivi post-déploiement (étape 7 de la
+  // méthodologie Yndra : "Suivi & amélioration continue") — renseignée
+  // manuellement via le bouton dédié sur la fiche projet. Null = jamais
+  // encore fait de point de suivi.
+  date_dernier_suivi?: string | null
   created_at: string
   contact?: Contact
 }
@@ -268,6 +273,10 @@ export interface Mission {
   date_fin_prevue: string | null
   project_id?: string | null
   responsable_id?: string | null
+  // Recommandation d'issue de mission (Go / Go conditionnel / No-go) — voir
+  // 01-methodologie/grille-diagnostic-maturite-ia.md : un "no-go" documenté
+  // est un livrable de valeur, pas un échec de mission. Null = non renseigné.
+  recommandation?: Recommandation | null
   created_at: string
   contact?: Contact
   tasks?: MissionTask[]
@@ -345,4 +354,30 @@ export interface Contract {
   created_at: string
   contact?: Contact
   quote?: Pick<Quote, 'id' | 'titre' | 'offre'>
+}
+
+// Grille de diagnostic de maturité IA (6 leviers, voir
+// 01-methodologie/grille-diagnostic-maturite-ia.md) : 3 niveaux, SANS
+// notation punitive (principe explicite de la source) — l'objectif est de
+// situer un point de départ, pas de sanctionner.
+// - sait_faire : compétence acquise et déployée
+// - partiel : croit savoir faire (angle mort à vérifier)
+// - ignore : lacune à combler avant d'investir
+export type NiveauMaturite = 'sait_faire' | 'partiel' | 'ignore'
+export type Recommandation = 'go' | 'go_conditionnel' | 'no_go'
+
+export interface MaturityAssessment {
+  id: string
+  contact_id: string
+  project_id: string | null
+  date_evaluation: string
+  recommandation: Recommandation | null
+  niveau_strategie: NiveauMaturite
+  niveau_organisation: NiveauMaturite
+  niveau_personnel: NiveauMaturite
+  niveau_offre: NiveauMaturite
+  niveau_technologie: NiveauMaturite
+  niveau_environnement: NiveauMaturite
+  notes: string | null
+  created_at: string
 }

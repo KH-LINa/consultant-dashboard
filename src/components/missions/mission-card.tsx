@@ -10,6 +10,8 @@ import {
 } from '@/components/ui/dialog'
 import { CheckSquare, Clock, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import type { Recommandation } from '@/lib/types'
+import { RECOMMANDATION_CONFIG } from '@/lib/maturite'
 
 interface MissionCardProps {
   id: string
@@ -19,9 +21,10 @@ interface MissionCardProps {
   total: number
   done: number
   heures: number
+  recommandation?: Recommandation | null
 }
 
-export function MissionCard({ id, titre, contactNom, budgetHt, total, done, heures }: MissionCardProps) {
+export function MissionCard({ id, titre, contactNom, budgetHt, total, done, heures, recommandation }: MissionCardProps) {
   const router = useRouter()
   const supabase = createClient()
   const [confirm, setConfirm] = useState(false)
@@ -49,6 +52,11 @@ export function MissionCard({ id, titre, contactNom, budgetHt, total, done, heur
         <CardContent className="p-3 space-y-2">
           <div className="flex items-start justify-between gap-2">
             <p className="text-sm font-medium text-gray-900 line-clamp-2">{titre}</p>
+            {recommandation && (
+              <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${RECOMMANDATION_CONFIG[recommandation].cls}`}>
+                {RECOMMANDATION_CONFIG[recommandation].label}
+              </span>
+            )}
             <button
               onClick={(e) => { e.stopPropagation(); setConfirm(true) }}
               className="flex-shrink-0 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"

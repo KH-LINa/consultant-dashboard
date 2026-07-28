@@ -6,11 +6,14 @@ import { CaMensuelChart } from '@/components/dashboard/ca-mensuel-chart'
 import { PipelineChart } from '@/components/dashboard/pipeline-chart'
 import { TopContacts } from '@/components/dashboard/top-contacts'
 import { ObjectifCA } from '@/components/dashboard/objectif-ca'
+import { PocFrictionCard } from '@/components/dashboard/poc-friction-card'
+import { SuiviRappelCard } from '@/components/dashboard/suivi-rappel-card'
 import {
   TrendingUp, Users, FileText, Clock, CheckCircle, Send,
   FolderGit2, FolderKanban, AlertTriangle, UserCheck, ChevronRight,
 } from 'lucide-react'
 import type { ProjectStatus, MissionStatus } from '@/lib/types'
+import { detecterFrictionPocProduction, detecterSuiviAPrevoir } from '@/lib/gantt-deps'
 
 const PROJECT_STATUS_LABEL: Record<ProjectStatus, { label: string; cls: string }> = {
   a_demarrer: { label: 'À démarrer', cls: 'bg-gray-100 text-gray-600' },
@@ -35,19 +38,25 @@ async function ManagerDashboard() {
     { data: missions },
     { count: nbTachesEnRetard },
     { data: clients },
+    { data: allPhases },
+    { data: allTasksStatut },
   ] = await Promise.all([
-    supabase.from('projects').select('id, titre, statut, date_fin_prevue, contact:contacts(nom, entreprise)').order('created_at', { ascending: false }),
+    supabase.from('projects').select('id, titre, statut, date_fin_prevue, date_dernier_suivi, contact:contacts(nom, entreprise)').order('created_at', { ascending: false }),
     supabase.from('missions').select('id, statut'),
     supabase.from('project_tasks').select('id', { count: 'exact', head: true }).lt('date_fin', todayIso).neq('statut', 'fait'),
     supabase.from('contacts').select('id, nom, entreprise, code_client').eq('type', 'client').order('nom'),
+    supabase.from('project_phases').select('id, project_id, titre, ordre, date_fin'),
+    supabase.from('project_tasks').select('phase_id, statut'),
   ])
 
   const projectsList = projects ?? []
   const missionsList = (missions ?? []) as { id: string; statut: MissionStatus }[]
+  const rappelsSuivi = detecterSuiviAPrevoir(projectsList)
   const clientsList = clients ?? []
 
   const projetsActifs = projectsList.filter((p) => p.statut !== 'termine' && p.statut !== 'annule')
   const missionsActives = missionsList.filter((m) => m.statut !== 'terminee' && m.statut !== 'annulee')
+  const risquesPoc = detecterFrictionPocProduction(projectsList, allPhases ?? [], allTasksStatut ?? [])
 
   return (
     <div className="space-y-8">
@@ -86,6 +95,9 @@ async function ManagerDashboard() {
           color="green"
         />
       </div>
+
+      <PocFrictionCard risques={risquesPoc} />
+      <SuiviRappelCard rappels={rappelsSuivi} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
@@ -171,13 +183,21 @@ export default async function DashboardPage() {
   const [
     { data: allQuotes },
     { data: allContacts },
+    { data: allProjects },
+    { data: allPhases },
+    { data: allTasksStatut },
   ] = await Promise.all([
     supabase.from('quotes').select('*, contact:contacts(nom, entreprise)'),
     supabase.from('contacts').select('id, nom, entreprise, type'),
+    supabase.from('projects').select('id, titre, statut, date_dernier_suivi'),
+    supabase.from('project_phases').select('id, project_id, titre, ordre, date_fin'),
+    supabase.from('project_tasks').select('phase_id, statut'),
   ])
 
   const quotes = allQuotes ?? []
   const contacts = allContacts ?? []
+  const risquesPoc = detecterFrictionPocProduction(allProjects ?? [], allPhases ?? [], allTasksStatut ?? [])
+  const rappelsSuivi = detecterSuiviAPrevoir(allProjects ?? [])
 
   // --- KPIs ---
   const now = new Date()
@@ -298,6 +318,9 @@ export default async function DashboardPage() {
           color="orange"
         />
       </div>
+
+      <PocFrictionCard risques={risquesPoc} />
+      <SuiviRappelCard rappels={rappelsSuivi} />
 
       {/* 2ème ligne : Objectif + Contacts stats */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
   wouldCreateCycle, findDependencyConflicts, computeCriticalPath, projectCompletionRate, phaseStatus,
+  detecterFrictionPocProduction, detecterSuiviAPrevoir, toLocalISO,
 } from './gantt-deps'
 import { feriesSet } from './jours-ouvres'
-import type { ProjectTask, ProjectPhase, ProjectTaskStatus, TaskDependency, DependencyType } from './types'
+import type {
+  ProjectTask, ProjectPhase, ProjectTaskStatus, TaskDependency, DependencyType, Project, ProjectStatus,
+} from './types'
 
 const feries = feriesSet(2026, 2026)
 
@@ -225,5 +228,93 @@ describe('findDependencyConflicts appliqué aux PHASES (même logique génériqu
     const phases = [phase('ph1', '2026-07-06', '2026-07-10'), phase('ph2', '2026-07-13', '2026-07-20')]
     const dep = { id: 'd1', predecessor_id: 'ph1', successor_id: 'ph2', type: 'FS' as DependencyType, lag_days: 0, created_at: '' }
     expect(findDependencyConflicts(phases, [dep], feries)).toHaveLength(0)
+  })
+})
+
+function projet(id: string, statut: ProjectStatus, titre = id): Project {
+  return { id, quote_id: null, contact_id: 'c', titre, statut, date_debut: null, date_fin_prevue: null, created_at: '' }
+}
+
+function ilYA(jours: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() - jours)
+  return toLocalISO(d)
+}
+
+function ilYAmois(mois: number): string {
+  const d = new Date()
+  d.setMonth(d.getMonth() - mois)
+  return toLocalISO(d)
+}
+
+describe('detecterFrictionPocProduction', () => {
+  it('signale un projet dont la phase POC est dépassée sans progression après', () => {
+    const projects = [projet('pr1', 'en_cours')]
+    const phases = [
+      { ...phase('poc', ilYA(20), ilYA(15)), titre: 'Preuve de concept (POC)', project_id: 'pr1', ordre: 0 },
+    ]
+    const tasks = [{ phase_id: 'poc', statut: 'a_faire' as ProjectTaskStatus }]
+    const resultats = detecterFrictionPocProduction(projects, phases, tasks)
+    expect(resultats).toHaveLength(1)
+    expect(resultats[0].projectId).toBe('pr1')
+    expect(resultats[0].joursDeRetard).toBeGreaterThanOrEqual(15)
+  })
+
+  it('ne signale rien si une phase suivante a une tâche entamée', () => {
+    const projects = [projet('pr1', 'en_cours')]
+    const phases = [
+      { ...phase('poc', ilYA(20), ilYA(15)), titre: 'POC', project_id: 'pr1', ordre: 0 },
+      { ...phase('conception', ilYA(14), ilYA(5)), titre: 'Conception', project_id: 'pr1', ordre: 1 },
+    ]
+    const tasks = [{ phase_id: 'conception', statut: 'en_cours' as ProjectTaskStatus }]
+    expect(detecterFrictionPocProduction(projects, phases, tasks)).toHaveLength(0)
+  })
+
+  it('ne signale rien si la phase POC n\'est pas encore terminée', () => {
+    const projects = [projet('pr1', 'en_cours')]
+    const d = new Date(); d.setDate(d.getDate() + 10)
+    const phases = [{ ...phase('poc', ilYA(5), toLocalISO(d)), titre: 'POC', project_id: 'pr1', ordre: 0 }]
+    expect(detecterFrictionPocProduction(projects, phases, [])).toHaveLength(0)
+  })
+
+  it('ignore les projets terminés ou annulés', () => {
+    const projects = [projet('pr1', 'termine'), projet('pr2', 'annule')]
+    const phases = [
+      { ...phase('poc1', ilYA(20), ilYA(15)), titre: 'POC', project_id: 'pr1', ordre: 0 },
+      { ...phase('poc2', ilYA(20), ilYA(15)), titre: 'POC', project_id: 'pr2', ordre: 0 },
+    ]
+    expect(detecterFrictionPocProduction(projects, phases, [])).toHaveLength(0)
+  })
+
+  it('ignore un projet sans phase évoquant un POC', () => {
+    const projects = [projet('pr1', 'en_cours')]
+    const phases = [{ ...phase('audit', ilYA(20), ilYA(15)), titre: 'Audit', project_id: 'pr1', ordre: 0 }]
+    expect(detecterFrictionPocProduction(projects, phases, [])).toHaveLength(0)
+  })
+})
+
+describe('detecterSuiviAPrevoir', () => {
+  it('signale un projet terminé sans aucun point de suivi', () => {
+    const projects = [{ ...projet('pr1', 'termine'), date_dernier_suivi: null }]
+    const resultats = detecterSuiviAPrevoir(projects)
+    expect(resultats).toHaveLength(1)
+    expect(resultats[0].moisEcoules).toBeNull()
+  })
+
+  it('signale un projet terminé dont le dernier suivi dépasse le seuil', () => {
+    const projects = [{ ...projet('pr1', 'termine'), date_dernier_suivi: ilYAmois(4) }]
+    const resultats = detecterSuiviAPrevoir(projects, 3)
+    expect(resultats).toHaveLength(1)
+    expect(resultats[0].moisEcoules).toBeGreaterThanOrEqual(3)
+  })
+
+  it('ne signale rien si le dernier suivi est récent', () => {
+    const projects = [{ ...projet('pr1', 'termine'), date_dernier_suivi: ilYAmois(1) }]
+    expect(detecterSuiviAPrevoir(projects, 3)).toHaveLength(0)
+  })
+
+  it('ignore les projets non terminés', () => {
+    const projects = [{ ...projet('pr1', 'en_cours'), date_dernier_suivi: null }]
+    expect(detecterSuiviAPrevoir(projects)).toHaveLength(0)
   })
 })

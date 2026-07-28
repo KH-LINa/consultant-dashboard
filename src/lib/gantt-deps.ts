@@ -1,4 +1,4 @@
-import type { ProjectTask, ProjectPhase, TaskDependency, DependencyType, ProjectTaskStatus } from '@/lib/types'
+import type { ProjectTask, ProjectPhase, TaskDependency, DependencyType, ProjectTaskStatus, Project } from '@/lib/types'
 import { addJoursOuvres, joursOuvresEntre } from '@/lib/jours-ouvres'
 
 /**
@@ -362,4 +362,100 @@ export function findUntrackedDependencies<E extends EntiteDatee = ProjectTask, D
     if (!pred || !succ) return false
     return !pred.date_debut || !pred.date_fin || !succ.date_debut || !succ.date_fin
   })
+}
+
+export interface ProjetEnRisquePoc {
+  projectId: string
+  projectTitre: string
+  phaseTitre: string
+  joursDeRetard: number
+}
+
+/**
+ * Détecte les projets bloqués dans la "zone de friction POC → Production"
+ * (voir 01-methodologie/grille-diagnostic-maturite-ia.md — l'essentiel des
+ * projets IA industriels s'arrêtent entre le POC et la production, pas sur
+ * l'algorithme). Un projet est signalé si :
+ * - il a une phase dont le titre évoque un POC ("POC", "preuve de concept") ;
+ * - la date de fin de cette phase est dépassée ;
+ * - aucune phase suivante (ordre supérieur) n'a de tâche entamée ("en_cours"
+ *   ou "fait") — rien n'a démarré après le POC.
+ * Projets déjà "terminé" ou "annulé" ignorés. Fonction pure, pensée pour
+ * tourner sur l'ensemble des projets/phases/tâches en une passe (dashboard).
+ */
+export function detecterFrictionPocProduction(
+  projects: Pick<Project, 'id' | 'titre' | 'statut'>[],
+  phases: Pick<ProjectPhase, 'id' | 'project_id' | 'titre' | 'ordre' | 'date_fin'>[],
+  tasks: Pick<ProjectTask, 'phase_id' | 'statut'>[]
+): ProjetEnRisquePoc[] {
+  const today = new Date().toISOString().slice(0, 10)
+  const resultats: ProjetEnRisquePoc[] = []
+
+  for (const project of projects) {
+    if (project.statut === 'termine' || project.statut === 'annule') continue
+
+    const phasesDuProjet = phases
+      .filter((p) => p.project_id === project.id)
+      .sort((a, b) => a.ordre - b.ordre)
+    const phasePoc = phasesDuProjet.find((p) => /\bpoc\b|preuve de concept/i.test(p.titre))
+    if (!phasePoc || !phasePoc.date_fin || phasePoc.date_fin >= today) continue
+
+    const phasesSuivantes = phasesDuProjet.filter((p) => p.ordre > phasePoc.ordre)
+    const progressionApresPoc = phasesSuivantes.some((p) =>
+      tasks.some((t) => t.phase_id === p.id && (t.statut === 'en_cours' || t.statut === 'fait'))
+    )
+    if (progressionApresPoc) continue
+
+    const joursDeRetard = Math.floor(
+      (Date.now() - new Date(phasePoc.date_fin + 'T00:00:00').getTime()) / 86_400_000
+    )
+    resultats.push({
+      projectId: project.id, projectTitre: project.titre, phaseTitre: phasePoc.titre, joursDeRetard,
+    })
+  }
+
+  return resultats.sort((a, b) => b.joursDeRetard - a.joursDeRetard)
+}
+
+export interface ProjetSuiviAPrevoir {
+  projectId: string
+  projectTitre: string
+  dateDernierSuivi: string | null
+  moisEcoules: number | null
+}
+
+/**
+ * Étape 7 de la méthodologie Yndra ("Suivi & amélioration continue") :
+ * signale les projets terminés (déployés) qui n'ont pas eu de point de
+ * suivi depuis `seuilMois` mois, ou jamais — pour que cette étape ne se
+ * perde pas silencieusement une fois la mission livrée. Un projet sans
+ * aucun date_dernier_suivi est toujours signalé (moisEcoules = null),
+ * quelle que soit son ancienneté.
+ */
+export function detecterSuiviAPrevoir(
+  projects: Pick<Project, 'id' | 'titre' | 'statut' | 'date_dernier_suivi'>[],
+  seuilMois = 3
+): ProjetSuiviAPrevoir[] {
+  const now = new Date()
+  const resultats: ProjetSuiviAPrevoir[] = []
+
+  for (const project of projects) {
+    if (project.statut !== 'termine') continue
+
+    if (!project.date_dernier_suivi) {
+      resultats.push({ projectId: project.id, projectTitre: project.titre, dateDernierSuivi: null, moisEcoules: null })
+      continue
+    }
+
+    const dernier = new Date(project.date_dernier_suivi + 'T00:00:00')
+    const moisEcoules = (now.getFullYear() - dernier.getFullYear()) * 12 + (now.getMonth() - dernier.getMonth())
+    if (moisEcoules >= seuilMois) {
+      resultats.push({
+        projectId: project.id, projectTitre: project.titre,
+        dateDernierSuivi: project.date_dernier_suivi, moisEcoules,
+      })
+    }
+  }
+
+  return resultats.sort((a, b) => (b.moisEcoules ?? 999) - (a.moisEcoules ?? 999))
 }

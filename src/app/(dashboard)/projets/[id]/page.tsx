@@ -11,6 +11,7 @@ import { ProjectGantt } from '@/components/projets/project-gantt'
 import { DependenciesManager } from '@/components/projets/dependencies-manager'
 import { PhaseDependenciesManager } from '@/components/projets/phase-dependencies-manager'
 import { ProjectPilotage } from '@/components/projets/project-pilotage'
+import { MarquerSuiviButton } from '@/components/projets/marquer-suivi-button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { FolderKanban, FileText } from 'lucide-react'
@@ -124,12 +125,15 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
         <p className="text-gray-500 mt-1">
           {project.contact?.nom}{project.contact?.entreprise ? ` — ${project.contact.entreprise}` : ''}
         </p>
-        <div className="mt-2">
+        <div className="mt-2 flex items-center gap-4 flex-wrap">
           <ProjectResponsableSelect
             projectId={project.id}
             responsableId={project.responsable_id ?? null}
             collaborateurs={collaborateurs ?? []}
           />
+          {project.statut === 'termine' && (
+            <MarquerSuiviButton projectId={project.id} dateDernierSuivi={project.date_dernier_suivi ?? null} />
+          )}
         </div>
       </div>
 

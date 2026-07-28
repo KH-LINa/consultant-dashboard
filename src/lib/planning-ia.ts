@@ -11,6 +11,24 @@ import { addJoursOuvres, feriesCourants, prochainJourOuvre } from '@/lib/jours-o
  * toasts) — voir le system prompt de /api/projets/generer-planning.
  */
 
+// Les 7 étapes de la méthodologie Yndra (voir CLAUDE.md du dépôt
+// méthodologie, § "Méthodologie d'intervention") — structure de planning
+// alternative aux lignes du devis, proposée dans le dialogue Cadence
+// (project-gantt.tsx) quand le projet n'a pas encore de phase. Les
+// quantités sont des indices de durée grossiers (jours) donnés à l'IA à
+// titre indicatif, pas des engagements — un POC dure réellement 6 à 12
+// semaines selon 01-methodologie/poc.md, ici bornée à 20 j comme le reste
+// du générateur.
+export const PHASES_METHODOLOGIE_YNDRA: QuoteLine[] = [
+  { description: 'Audit / diagnostic', quantite: 5, prix_unitaire: 0 },
+  { description: 'Cadrage & faisabilité', quantite: 5, prix_unitaire: 0 },
+  { description: 'Preuve de concept (POC)', quantite: 20, prix_unitaire: 0 },
+  { description: 'Conception de la solution', quantite: 10, prix_unitaire: 0 },
+  { description: 'Déploiement / implantation', quantite: 15, prix_unitaire: 0 },
+  { description: 'Accompagnement au changement & formation', quantite: 5, prix_unitaire: 0 },
+  { description: 'Suivi & amélioration continue', quantite: 5, prix_unitaire: 0 },
+]
+
 export interface PlanningTache {
   titre: string
   duree_jours_ouvres: number

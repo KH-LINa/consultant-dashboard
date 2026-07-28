@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { Mission, MissionStatus, Collaborateur } from '@/lib/types'
+import type { Mission, MissionStatus, Recommandation, Collaborateur } from '@/lib/types'
+import { RECOMMANDATION_CONFIG } from '@/lib/maturite'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -42,6 +43,7 @@ export function MissionForm({
     date_debut: mission?.date_debut ?? '',
     date_fin_prevue: mission?.date_fin_prevue ?? '',
     responsable_id: mission?.responsable_id ?? NONE,
+    recommandation: mission?.recommandation ?? NONE,
   })
   const [saving, setSaving] = useState(false)
 
@@ -68,6 +70,7 @@ export function MissionForm({
       date_debut: form.date_debut || null,
       date_fin_prevue: form.date_fin_prevue || null,
       responsable_id: form.responsable_id === NONE ? null : form.responsable_id,
+      recommandation: form.recommandation === NONE ? null : form.recommandation,
     }
 
     const { error } = isEdit
@@ -167,6 +170,21 @@ export function MissionForm({
               <Input type="number" min="0" step="100" value={form.budget_ht}
                 onChange={(e) => setForm((p) => ({ ...p, budget_ht: parseFloat(e.target.value) || 0 }))} />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label title="Recommandation d'issue de mission — un no-go documenté est un livrable de valeur, pas un échec">
+              Recommandation
+            </Label>
+            <Select value={form.recommandation} onValueChange={(v) => setForm((p) => ({ ...p, recommandation: (v ?? NONE) as Recommandation | typeof NONE }))}>
+              <SelectTrigger><SelectValue placeholder="Non renseignée" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>— Non renseignée —</SelectItem>
+                {(Object.keys(RECOMMANDATION_CONFIG) as Recommandation[]).map((r) => (
+                  <SelectItem key={r} value={r}>{RECOMMANDATION_CONFIG[r].label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

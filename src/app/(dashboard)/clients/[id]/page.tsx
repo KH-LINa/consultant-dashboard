@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { DocumentsManager } from '@/components/documents/documents-manager'
 import { ContractStatusBadge } from '@/components/contracts/ContractStatusBadge'
+import { MaturityHistory } from '@/components/clients/maturity-history'
+import { RECOMMANDATION_CONFIG } from '@/lib/maturite'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,7 +14,7 @@ import {
 } from 'lucide-react'
 import type {
   Quote, QuoteStatus, Invoice, InvoiceStatus, Contract, Mission, MissionStatus, Project, ProjectStatus,
-  DocumentFile,
+  DocumentFile, MaturityAssessment,
 } from '@/lib/types'
 
 const typeBadge: Record<string, string> = {
@@ -106,6 +108,7 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
     { data: missions },
     { data: projects },
     { data: documents },
+    { data: maturityAssessments },
   ] = await Promise.all([
     supabase.from('contacts').select('*').eq('id', params.id).single(),
     supabase.from('quotes').select('*').eq('contact_id', params.id).order('created_at', { ascending: false }),
@@ -114,6 +117,7 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
     supabase.from('missions').select('*').eq('contact_id', params.id).order('created_at', { ascending: false }),
     supabase.from('projects').select('*').eq('contact_id', params.id).order('created_at', { ascending: false }),
     supabase.from('documents').select('*').eq('contact_id', params.id).order('created_at', { ascending: false }),
+    supabase.from('maturity_assessments').select('*').eq('contact_id', params.id).order('date_evaluation', { ascending: false }),
   ])
 
   if (!contact) notFound()
@@ -124,6 +128,7 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
   const missionsList = (missions ?? []) as Mission[]
   const projectsList = (projects ?? []) as Project[]
   const documentsList = (documents ?? []) as DocumentFile[]
+  const maturityList = (maturityAssessments ?? []) as MaturityAssessment[]
 
   const caFacture = invoicesList
     .filter((i) => i.statut === 'payée')
@@ -318,9 +323,16 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
                 date={fmtDate(m.created_at)}
                 montant={m.budget_ht}
                 badge={
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${missionStatusLabel[m.statut].cls}`}>
-                    {missionStatusLabel[m.statut].label}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {m.recommandation && (
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${RECOMMANDATION_CONFIG[m.recommandation].cls}`}>
+                        {RECOMMANDATION_CONFIG[m.recommandation].label}
+                      </span>
+                    )}
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${missionStatusLabel[m.statut].cls}`}>
+                      {missionStatusLabel[m.statut].label}
+                    </span>
+                  </div>
                 }
               />
             ))}
@@ -351,6 +363,12 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
           </CardContent>
         </Card>
       </div>
+
+      <MaturityHistory
+        contactId={contact.id}
+        assessments={maturityList}
+        projects={projectsList.map((p) => ({ id: p.id, titre: p.titre }))}
+      />
 
       <DocumentsManager documents={documentsList} contactId={contact.id} title="Documents" />
     </div>

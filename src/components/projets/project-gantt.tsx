@@ -26,7 +26,7 @@ import type {
   MilestoneStatus, QuoteLine,
 } from '@/lib/types'
 import {
-  fetchPlanningIA, buildPhasesAndTasksFromPlanning, buildTasksForPhase, type TaskInsert,
+  fetchPlanningIA, buildPhasesAndTasksFromPlanning, buildTasksForPhase, PHASES_METHODOLOGIE_YNDRA, type TaskInsert,
 } from '@/lib/planning-ia'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -162,6 +162,7 @@ export function ProjectGantt({
   const [regenDialogOpen, setRegenDialogOpen] = useState(false)
   const [selectedPhaseIds, setSelectedPhaseIds] = useState<Set<string>>(new Set())
   const [consignes, setConsignes] = useState('')
+  const [modeGeneration, setModeGeneration] = useState<'devis' | 'methodologie'>('devis')
   const [linkMode, setLinkMode] = useState(false)
   const [linkFrom, setLinkFrom] = useState<string | null>(null)
 
@@ -1126,27 +1127,28 @@ export function ProjectGantt({
   //   régénérer (regenDialogOpen/selectedPhaseIds) — seules les phases
   //   cochées sont touchées, les autres restent intactes.
   function handleCadenceClick() {
-    if (!quoteLignes || quoteLignes.length === 0) {
-      toast.info("Cadence a besoin des lignes du devis lié à ce projet pour proposer un planning.")
-      return
-    }
     setSelectedPhaseIds(new Set())
     setConsignes('')
+    // Sans devis lié, seule la structure méthodologie Yndra a du sens.
+    setModeGeneration(quoteLignes && quoteLignes.length > 0 ? 'devis' : 'methodologie')
     setRegenDialogOpen(true)
   }
 
-  // Génération initiale (aucune phase existante) : crée tout depuis les
-  // lignes du devis. Rien à supprimer, donc pas de confirmation nécessaire.
+  // Génération initiale (aucune phase existante) : crée tout d'un coup,
+  // soit depuis les lignes du devis, soit depuis les 7 étapes fixes de la
+  // méthodologie Yndra (voir modeGeneration/PHASES_METHODOLOGIE_YNDRA) —
+  // au choix dans le dialogue. Rien à supprimer, donc pas de confirmation.
   async function handleGenerateAll() {
-    if (!quoteLignes) return
+    const lignesSource = modeGeneration === 'methodologie' ? PHASES_METHODOLOGIE_YNDRA : quoteLignes
+    if (!lignesSource || lignesSource.length === 0) return
     setRegenerating(true)
-    const phasesIA = await fetchPlanningIA(projectTitre, quoteLignes, consignes)
+    const phasesIA = await fetchPlanningIA(projectTitre, lignesSource, consignes)
     if (!phasesIA) {
       toast.error("Cadence n'a pas pu générer de planning. Réessayez dans un instant.")
       setRegenerating(false)
       return
     }
-    const { phases: nouvellesPhases, tachesParPhase } = buildPhasesAndTasksFromPlanning(projectId, phasesIA, quoteLignes)
+    const { phases: nouvellesPhases, tachesParPhase } = buildPhasesAndTasksFromPlanning(projectId, phasesIA, lignesSource)
 
     const supabase = createClient()
     const { data: insertedPhases, error: phasesError } = await supabase
@@ -1405,12 +1407,8 @@ export function ProjectGantt({
           </button>
           <button
             onClick={handleCadenceClick}
-            disabled={regenerating || !quoteLignes?.length}
-            title={
-              !quoteLignes?.length
-                ? "Cadence : indisponible, ce projet n'est lié à aucun devis"
-                : "Cadence : (re)générer le planning avec l'IA"
-            }
+            disabled={regenerating}
+            title="Cadence : (re)générer le planning avec l'IA"
             className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-gray-500"
           >
             {regenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
@@ -1647,7 +1645,7 @@ export function ProjectGantt({
           </DialogTitle>
           <DialogDescription>
             {localPhases.length === 0
-              ? "Cadence propose une phase par ligne du devis, détaillée en quelques tâches concrètes."
+              ? "Cadence détaille chaque phase en quelques tâches concrètes."
               : (<>
                   Seules les phases cochées sont modifiées : leurs tâches actuelles — ainsi que les
                   commentaires, dépendances et affectations de ressources qui leur sont liés — seront
@@ -1656,6 +1654,38 @@ export function ProjectGantt({
                 </>)}
           </DialogDescription>
         </DialogHeader>
+        {localPhases.length === 0 && (
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-gray-600">Structure du planning</span>
+            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+              <button
+                type="button"
+                onClick={() => setModeGeneration('devis')}
+                disabled={!quoteLignes?.length}
+                title={!quoteLignes?.length ? "Ce projet n'est lié à aucun devis" : undefined}
+                className={`flex-1 text-xs px-2.5 py-1.5 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                  modeGeneration === 'devis' ? 'bg-white shadow-sm font-medium' : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                Depuis le devis
+              </button>
+              <button
+                type="button"
+                onClick={() => setModeGeneration('methodologie')}
+                className={`flex-1 text-xs px-2.5 py-1.5 rounded-md transition-colors ${
+                  modeGeneration === 'methodologie' ? 'bg-white shadow-sm font-medium' : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                Méthodologie Yndra (7 étapes)
+              </button>
+            </div>
+            <p className="text-xs text-gray-400">
+              {modeGeneration === 'methodologie'
+                ? 'Audit → Cadrage → POC → Conception → Déploiement → Formation → Suivi, quel que soit le contenu du devis.'
+                : 'Une phase par ligne du devis signé.'}
+            </p>
+          </div>
+        )}
         {localPhases.length > 0 && (
           <div className="space-y-1.5 max-h-56 overflow-y-auto py-1">
             {localPhases.map((p) => (
