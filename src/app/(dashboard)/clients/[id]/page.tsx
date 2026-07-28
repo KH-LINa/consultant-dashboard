@@ -139,6 +139,11 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
           <span className={`text-xs px-2 py-1 rounded-full font-medium ${typeBadge[contact.type]}`}>
             {contact.type}
           </span>
+          {contact.code_client && (
+            <span className="text-xs font-mono px-2 py-1 rounded-full font-medium bg-gray-100 text-gray-500">
+              {contact.code_client}
+            </span>
+          )}
         </div>
       </div>
 

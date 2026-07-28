@@ -21,6 +21,10 @@ export interface Contact {
   entreprise: string | null
   notes: string | null
   created_at: string
+  // Identifiant lisible ("CLI-0001"), attribué automatiquement en base dès
+  // que le contact passe client (trigger sur contacts.type) — null tant
+  // qu'il reste prospect/inactif, jamais réattribué une fois défini.
+  code_client: string | null
 }
 
 export interface QuoteLine {

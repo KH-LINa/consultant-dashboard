@@ -30,6 +30,7 @@ export function ClientsTable({ clients }: { clients: ClientRow[] }) {
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead>Code</TableHead>
             <TableHead>Nom</TableHead>
             <TableHead>Entreprise</TableHead>
             <TableHead>Email</TableHead>
@@ -41,6 +42,11 @@ export function ClientsTable({ clients }: { clients: ClientRow[] }) {
         <TableBody>
           {clients.map((client) => (
             <TableRow key={client.id} className="cursor-pointer hover:bg-gray-50">
+              <TableCell className="p-0">
+                <Link href={`/clients/${client.id}`} className="block px-4 py-3 font-mono text-xs text-gray-500">
+                  {client.code_client ?? '—'}
+                </Link>
+              </TableCell>
               <TableCell className="p-0">
                 <Link href={`/clients/${client.id}`} className="block px-4 py-3 font-medium">
                   {client.nom}
