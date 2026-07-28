@@ -40,7 +40,7 @@ import {
 } from '@/components/ui/dialog'
 import {
   GanttChartSquare, AlertTriangle, Plus, Route, Network,
-  Maximize2, Minimize2, Printer, ZoomIn, ZoomOut, Download, Search, X, Sparkles, Loader2, Link2,
+  Maximize2, Minimize2, Printer, ZoomIn, ZoomOut, Download, Search, X, Sparkles, Loader2, Link2, RotateCcw,
 } from 'lucide-react'
 import { GanttTooltip } from '@/components/projets/gantt-tooltip'
 import { PertView } from '@/components/projets/pert-view'
@@ -1000,6 +1000,25 @@ export function ProjectGantt({
     }
   }, [localPhases, localTasks, taskById, router])
 
+  const handlePertPositionChange = useCallback(async (taskId: string, x: number | null, y: number | null) => {
+    const prev = localTasks
+    setLocalTasks((ts) => ts.map((t) => (t.id === taskId ? { ...t, pert_x: x, pert_y: y } : t)))
+    const supabase = createClient()
+    const { error } = await supabase.from('project_tasks').update({ pert_x: x, pert_y: y }).eq('id', taskId)
+    if (error) { setLocalTasks(prev); toast.error("Échec de l'enregistrement de la position") }
+  }, [localTasks])
+
+  const handleResetPertLayout = useCallback(async () => {
+    const idsAReinitialiser = localTasks.filter((t) => t.pert_x != null || t.pert_y != null).map((t) => t.id)
+    if (idsAReinitialiser.length === 0) return
+    const prev = localTasks
+    setLocalTasks((ts) => ts.map((t) => (idsAReinitialiser.includes(t.id) ? { ...t, pert_x: null, pert_y: null } : t)))
+    const supabase = createClient()
+    const { error } = await supabase.from('project_tasks').update({ pert_x: null, pert_y: null }).in('id', idsAReinitialiser)
+    if (error) { setLocalTasks(prev); toast.error('Échec de la réinitialisation de la disposition') }
+    else toast.success('Disposition PERT réinitialisée')
+  }, [localTasks])
+
   const { Header: TaskListHeader, Table: TaskListTable } = useMemo(
     () => createTaskListComponents(
       colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, handleSupprimerTache,
@@ -1427,17 +1446,28 @@ export function ProjectGantt({
             </>
           )}
 
-          <button
-            onClick={() => { setLinkMode((v) => !v); setLinkFrom(null) }}
-            title={linkMode ? 'Quitter le mode liaison' : "Lier deux tâches par une dépendance (clic sur la prérequise, puis la suivante)"}
-            className={`p-1.5 rounded-lg border transition-colors ${
-              linkMode
-                ? 'bg-[#534AB7] border-[#534AB7] text-white'
-                : 'border-gray-200 text-gray-500 hover:text-gray-800'
-            }`}
-          >
-            <Link2 className="h-3.5 w-3.5" />
-          </button>
+          {view === 'pert' && (
+            <button
+              onClick={handleResetPertLayout}
+              title="Réinitialiser la disposition manuelle des briques du PERT"
+              className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-800 transition-colors"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {view === 'gantt' && (
+            <button
+              onClick={() => { setLinkMode((v) => !v); setLinkFrom(null) }}
+              title={linkMode ? 'Quitter le mode liaison' : "Lier deux tâches par une dépendance (clic sur la prérequise, puis la suivante)"}
+              className={`p-1.5 rounded-lg border transition-colors ${
+                linkMode
+                  ? 'bg-[#534AB7] border-[#534AB7] text-white'
+                  : 'border-gray-200 text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              <Link2 className="h-3.5 w-3.5" />
+            </button>
+          )}
           <button
             onClick={handleCadenceClick}
             disabled={regenerating}
@@ -1472,7 +1502,7 @@ export function ProjectGantt({
       <CardContent>
         {view === 'pert' ? (
           <div className="gantt-print-area">
-            <PertView tasks={localTasks} dependencies={dependencies} />
+            <PertView tasks={localTasks} dependencies={dependencies} onPositionChange={handlePertPositionChange} />
           </div>
         ) : vide ? (
           <p className="text-sm text-gray-400 py-8 text-center">

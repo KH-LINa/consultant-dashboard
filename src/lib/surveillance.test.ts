@@ -23,7 +23,7 @@ function tache(
   return {
     id, project_id: projectId, phase_id: null, parent_task_id: null, responsable_id: null,
     titre: id, date_debut: dateFin, date_fin: dateFin, heure_debut: null, heure_fin: null,
-    statut, avancement: 0, ordre: 0, created_at: '', serie_id: null,
+    statut, avancement: 0, ordre: 0, created_at: '', serie_id: null, pert_x: null, pert_y: null,
   }
 }
 
@@ -45,7 +45,7 @@ function tachePeriode(
   return {
     id, project_id: projectId, phase_id: null, parent_task_id: null, responsable_id: responsableId,
     titre: id, date_debut: debut, date_fin: fin, heure_debut: heureDebut, heure_fin: heureFin,
-    statut: 'a_faire', avancement: 0, ordre: 0, created_at: '', serie_id: null,
+    statut: 'a_faire', avancement: 0, ordre: 0, created_at: '', serie_id: null, pert_x: null, pert_y: null,
   }
 }
 

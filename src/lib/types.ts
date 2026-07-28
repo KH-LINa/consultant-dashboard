@@ -161,6 +161,9 @@ export interface ProjectTask {
   created_at: string
   // Regroupe les occurrences d'une tâche récurrente (même série) ; null = tâche isolée.
   serie_id: string | null
+  // Position manuelle dans la vue PERT (glisser-déposer) ; null = disposition automatique par profondeur.
+  pert_x: number | null
+  pert_y: number | null
 }
 
 // Fil de commentaires sur une tâche (ex. cause d'un retard ou d'un blocage)
