@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { KpiCard } from '@/components/dashboard/kpi-card'
@@ -7,10 +8,165 @@ import { TopContacts } from '@/components/dashboard/top-contacts'
 import { ObjectifCA } from '@/components/dashboard/objectif-ca'
 import {
   TrendingUp, Users, FileText, Clock, CheckCircle, Send,
+  FolderGit2, FolderKanban, AlertTriangle, UserCheck, ChevronRight,
 } from 'lucide-react'
+import type { ProjectStatus, MissionStatus } from '@/lib/types'
+
+const PROJECT_STATUS_LABEL: Record<ProjectStatus, { label: string; cls: string }> = {
+  a_demarrer: { label: 'À démarrer', cls: 'bg-gray-100 text-gray-600' },
+  en_cours: { label: 'En cours', cls: 'bg-blue-100 text-blue-700' },
+  en_pause: { label: 'En pause', cls: 'bg-orange-100 text-orange-700' },
+  termine: { label: 'Terminé', cls: 'bg-green-100 text-green-700' },
+  annule: { label: 'Annulé', cls: 'bg-red-100 text-red-700' },
+}
+
+// Vue manager : uniquement des informations opérationnelles (projets en
+// cours, missions, retards, liste des clients) — jamais de chiffre
+// commercial/financier (CA, objectifs, pipeline devis, top clients par CA),
+// réservés à l'admin sur ce tableau de bord. Le reste de l'outil (Devis,
+// Factures, Clients...) reste accessible tel quel au manager : c'est
+// seulement cette page de synthèse qui est restreinte.
+async function ManagerDashboard() {
+  const supabase = await createClient()
+  const todayIso = new Date().toISOString().slice(0, 10)
+
+  const [
+    { data: projects },
+    { data: missions },
+    { count: nbTachesEnRetard },
+    { data: clients },
+  ] = await Promise.all([
+    supabase.from('projects').select('id, titre, statut, date_fin_prevue, contact:contacts(nom, entreprise)').order('created_at', { ascending: false }),
+    supabase.from('missions').select('id, statut'),
+    supabase.from('project_tasks').select('id', { count: 'exact', head: true }).lt('date_fin', todayIso).neq('statut', 'fait'),
+    supabase.from('contacts').select('id, nom, entreprise, code_client').eq('type', 'client').order('nom'),
+  ])
+
+  const projectsList = projects ?? []
+  const missionsList = (missions ?? []) as { id: string; statut: MissionStatus }[]
+  const clientsList = clients ?? []
+
+  const projetsActifs = projectsList.filter((p) => p.statut !== 'termine' && p.statut !== 'annule')
+  const missionsActives = missionsList.filter((m) => m.statut !== 'terminee' && m.statut !== 'annulee')
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">Tableau de bord</h1>
+        <p className="text-gray-500 mt-1">Vue d&apos;ensemble opérationnelle</p>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard
+          title="Projets actifs"
+          value={String(projetsActifs.length)}
+          subtitle={`${projectsList.length} au total`}
+          icon={FolderGit2}
+          color="blue"
+        />
+        <KpiCard
+          title="Missions actives"
+          value={String(missionsActives.length)}
+          subtitle={`${missionsList.length} au total`}
+          icon={FolderKanban}
+          color="purple"
+        />
+        <KpiCard
+          title="Tâches en retard"
+          value={String(nbTachesEnRetard ?? 0)}
+          subtitle="tous projets confondus"
+          icon={AlertTriangle}
+          color="orange"
+        />
+        <KpiCard
+          title="Clients"
+          value={String(clientsList.length)}
+          subtitle="au total"
+          icon={UserCheck}
+          color="green"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <FolderGit2 className="h-4 w-4 text-[#534AB7]" />
+              Projets en cours
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {projetsActifs.length === 0 ? (
+              <p className="text-sm text-gray-400 py-4">Aucun projet actif.</p>
+            ) : (
+              <div className="divide-y">
+                {projetsActifs.slice(0, 8).map((p: any) => (
+                  <Link key={p.id} href={`/projets/${p.id}`}
+                    className="flex items-center justify-between gap-3 py-2.5 px-1 -mx-1 rounded-lg hover:bg-gray-50">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{p.titre}</p>
+                      <p className="text-xs text-gray-400 truncate">{p.contact?.nom}</p>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 ${PROJECT_STATUS_LABEL[p.statut as ProjectStatus].cls}`}>
+                      {PROJECT_STATUS_LABEL[p.statut as ProjectStatus].label}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <UserCheck className="h-4 w-4 text-green-600" />
+              Clients ({clientsList.length})
+            </CardTitle>
+            <Link href="/clients" className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600">
+              Voir tous <ChevronRight className="h-3 w-3" />
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {clientsList.length === 0 ? (
+              <p className="text-sm text-gray-400 py-4">Aucun client pour l&apos;instant.</p>
+            ) : (
+              <div className="divide-y">
+                {clientsList.slice(0, 8).map((c) => (
+                  <Link key={c.id} href={`/clients/${c.id}`}
+                    className="flex items-center justify-between gap-3 py-2.5 px-1 -mx-1 rounded-lg hover:bg-gray-50">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{c.nom}</p>
+                      <p className="text-xs text-gray-400 truncate">{c.entreprise ?? '—'}</p>
+                    </div>
+                    {c.code_client && (
+                      <span className="text-xs font-mono text-gray-400 shrink-0">{c.code_client}</span>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: profile } = user
+    ? await supabase.from('profiles').select('role').eq('id', user.id).single()
+    : { data: null }
+
+  // Seul l'admin voit les chiffres commerciaux/financiers (CA, objectifs,
+  // pipeline devis, top clients par CA) sur cette page — un manager a accès
+  // au reste de l'outil normalement, mais pas à cette synthèse financière.
+  if (profile?.role !== 'admin') {
+    return <ManagerDashboard />
+  }
 
   const [
     { data: allQuotes },
