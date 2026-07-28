@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator'
 import {
   LayoutDashboard,
   Users,
+  UserCheck,
   FileText,
   Receipt,
   Bell,
@@ -30,6 +31,7 @@ import type { UserRole } from '@/lib/types'
 const navItems = [
   { href: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
   { href: '/contacts', label: 'Contacts', icon: Users },
+  { href: '/clients', label: 'Clients', icon: UserCheck },
   { href: '/devis', label: 'Devis', icon: FileText },
   { href: '/contrats', label: 'Contrats', icon: FileSignature },
   { href: '/missions', label: 'Missions', icon: FolderKanban },
