@@ -1138,9 +1138,12 @@ export function ProjectGantt({
   // soit depuis les lignes du devis, soit depuis les 7 étapes fixes de la
   // méthodologie Yndra (voir modeGeneration/PHASES_METHODOLOGIE_YNDRA) —
   // au choix dans le dialogue. Rien à supprimer, donc pas de confirmation.
-  async function handleGenerateAll() {
-    const lignesSource = modeGeneration === 'methodologie' ? PHASES_METHODOLOGIE_YNDRA : quoteLignes
-    if (!lignesSource || lignesSource.length === 0) return
+  // Génère et insère un planning complet (phases + tâches) depuis une liste
+  // de "lignes" (devis ou méthodologie Yndra) — l'appelant est responsable
+  // de supprimer l'existant AVANT d'appeler cette fonction si besoin (voir
+  // handleRestructureMethodologie), jamais l'inverse : on ne détruit rien
+  // tant que le nouveau planning n'est pas prêt.
+  async function genererEtInsererPlanning(lignesSource: QuoteLine[]) {
     setRegenerating(true)
     const phasesIA = await fetchPlanningIA(projectTitre, lignesSource, consignes)
     if (!phasesIA) {
@@ -1175,6 +1178,36 @@ export function ProjectGantt({
     setRegenerating(false)
     setRegenDialogOpen(false)
     router.refresh()
+  }
+
+  // Cas "projet sans aucune phase" : génère tout d'un coup depuis le mode
+  // choisi (devis ou méthodologie Yndra).
+  async function handleGenerateAll() {
+    const lignesSource = modeGeneration === 'methodologie' ? PHASES_METHODOLOGIE_YNDRA : quoteLignes
+    if (!lignesSource || lignesSource.length === 0) return
+    await genererEtInsererPlanning(lignesSource)
+  }
+
+  // Cas "projet déjà structuré" : remplace ENTIÈREMENT le planning actuel
+  // par les 7 étapes de la méthodologie Yndra — accessible même quand des
+  // phases existent déjà (ex. un projet créé depuis un devis, structuré
+  // différemment). Destructeur, donc confirmation explicite avant de
+  // supprimer quoi que ce soit ; le nouveau planning n'écrase l'ancien
+  // qu'une fois généré avec succès.
+  async function handleRestructureMethodologie() {
+    if (localPhases.length > 0) {
+      const ok = window.confirm(
+        'Cadence va remplacer TOUT le planning actuel par les 7 étapes de la méthodologie Yndra : ' +
+        'phases, tâches, ainsi que les commentaires, dépendances et affectations de ressources qui ' +
+        'leur sont liés seront définitivement supprimés. Continuer ?'
+      )
+      if (!ok) return
+    }
+    setRegenerating(true)
+    const supabase = createClient()
+    await supabase.from('project_tasks').delete().eq('project_id', projectId)
+    await supabase.from('project_phases').delete().eq('project_id', projectId)
+    await genererEtInsererPlanning(PHASES_METHODOLOGIE_YNDRA)
   }
 
   function toggleSelectedPhase(id: string) {
@@ -1700,6 +1733,16 @@ export function ProjectGantt({
               </label>
             ))}
           </div>
+        )}
+        {localPhases.length > 0 && (
+          <button
+            type="button"
+            onClick={handleRestructureMethodologie}
+            disabled={regenerating}
+            className="text-xs text-[#534AB7] hover:underline text-left disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            ↺ Remplacer toute la structure par les 7 étapes de la méthodologie Yndra
+          </button>
         )}
         <div className="space-y-1.5">
           <label htmlFor="cadence-consignes" className="text-xs font-medium text-gray-600">
