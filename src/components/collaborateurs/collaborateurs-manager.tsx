@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Plus, Trash2, Users, Link2, Unlink } from 'lucide-react'
+import { Plus, Trash2, Users, Link2, Unlink, StickyNote } from 'lucide-react'
 import { toast } from 'sonner'
 
 const COULEURS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#64748b']
@@ -45,9 +45,11 @@ export function CollaborateursManager({
   const [nom, setNom] = useState('')
   const [role, setRole] = useState('')
   const [email, setEmail] = useState('')
+  const [telephone, setTelephone] = useState('')
   const [couleur, setCouleur] = useState(COULEURS[0])
   const [adding, setAdding] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [notesOuvertes, setNotesOuvertes] = useState<string | null>(null)
 
   const assignmentsByResource = useMemo(() => {
     const m = new Map<string, ResourceAssignment[]>()
@@ -98,23 +100,31 @@ export function CollaborateursManager({
     return m
   }, [tasks])
 
+  // Actifs d'abord, puis inactifs — plutôt qu'un ordre alphabétique qui les
+  // mélangerait avec les collaborateurs en activité.
+  const collaborateursTries = useMemo(
+    () => [...collaborateurs].sort((a, b) => Number(b.actif) - Number(a.actif)),
+    [collaborateurs]
+  )
+
   async function addCollaborateur(e: React.FormEvent) {
     e.preventDefault()
     if (!nom.trim()) return
     setAdding(true)
     const { error } = await supabase.from('collaborateurs').insert({
-      nom: nom.trim(), role: role.trim() || null, email: email.trim() || null, couleur,
+      nom: nom.trim(), role: role.trim() || null, email: email.trim() || null,
+      telephone: telephone.trim() || null, couleur,
     })
     setAdding(false)
     if (error) toast.error(error.message)
     else {
       toast.success('Collaborateur ajouté')
-      setNom(''); setRole(''); setEmail(''); setCouleur(COULEURS[0])
+      setNom(''); setRole(''); setEmail(''); setTelephone(''); setCouleur(COULEURS[0])
       router.refresh()
     }
   }
 
-  async function update(id: string, field: string, value: string | null) {
+  async function update(id: string, field: string, value: string | boolean | null) {
     const { error } = await supabase.from('collaborateurs').update({ [field]: value }).eq('id', id)
     if (error) toast.error(error.message); else router.refresh()
   }
@@ -142,7 +152,7 @@ export function CollaborateursManager({
           </p>
         )}
 
-        {collaborateurs.map((c) => {
+        {collaborateursTries.map((c) => {
           const res = c.resource_id ? resourceById.get(c.resource_id) : null
           const affs = res ? (assignmentsByResource.get(res.id) ?? []) : []
           const totalHeures = affs.reduce((s, a) => s + (a.heures || 0), 0)
@@ -155,15 +165,19 @@ export function CollaborateursManager({
           const resourcesSelectionnables = resources.filter((r) => r.id === c.resource_id || !dejaLiees.has(r.id))
 
           return (
-            <div key={c.id} className="border rounded-lg p-3 space-y-2 group">
+            <div key={c.id} className={`border rounded-lg p-3 space-y-2 group ${c.actif ? '' : 'opacity-60 bg-gray-50/50'}`}>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="w-3 h-3 rounded-full shrink-0" style={{ background: c.couleur }} />
-                <Input className="h-8 w-44 font-medium" defaultValue={c.nom}
+                <Input className="h-8 w-40 font-medium" defaultValue={c.nom}
                   onBlur={(e) => e.target.value.trim() && e.target.value !== c.nom && update(c.id, 'nom', e.target.value.trim())} />
-                <Input className="h-8 w-36 text-xs" placeholder="Rôle (optionnel)" defaultValue={c.role ?? ''}
-                  onBlur={(e) => e.target.value.trim() !== (c.role ?? '') && update(c.id, 'role', e.target.value.trim() || null)} />
-                <Input type="email" className="h-8 w-48 text-xs" placeholder="email (optionnel)" defaultValue={c.email ?? ''}
-                  onBlur={(e) => e.target.value.trim() !== (c.email ?? '') && update(c.id, 'email', e.target.value.trim() || null)} />
+                {c.code_collaborateur && (
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 shrink-0">
+                    {c.code_collaborateur}
+                  </span>
+                )}
+                {!c.actif && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600 shrink-0">Inactif</span>
+                )}
                 <div className="flex gap-1">
                   {COULEURS.map((col) => (
                     <button key={col} type="button" onClick={() => update(c.id, 'couleur', col)}
@@ -171,11 +185,41 @@ export function CollaborateursManager({
                       style={{ background: col }} />
                   ))}
                 </div>
+                <label className="flex items-center gap-1.5 text-xs text-gray-500 ml-2 cursor-pointer">
+                  <input type="checkbox" checked={c.actif} onChange={(e) => update(c.id, 'actif', e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-gray-300" />
+                  Actif
+                </label>
                 <Button variant="ghost" size="sm" onClick={() => remove(c.id)}
                   className="ml-auto h-8 w-8 p-0 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100">
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
+
+              <div className="pl-5 flex items-center gap-2 flex-wrap">
+                <Input className="h-8 w-36 text-xs" placeholder="Rôle (optionnel)" defaultValue={c.role ?? ''}
+                  onBlur={(e) => e.target.value.trim() !== (c.role ?? '') && update(c.id, 'role', e.target.value.trim() || null)} />
+                <Input type="email" className="h-8 w-48 text-xs" placeholder="email (optionnel)" defaultValue={c.email ?? ''}
+                  onBlur={(e) => e.target.value.trim() !== (c.email ?? '') && update(c.id, 'email', e.target.value.trim() || null)} />
+                <Input type="tel" className="h-8 w-40 text-xs" placeholder="téléphone (optionnel)" defaultValue={c.telephone ?? ''}
+                  onBlur={(e) => e.target.value.trim() !== (c.telephone ?? '') && update(c.id, 'telephone', e.target.value.trim() || null)} />
+                <button
+                  onClick={() => setNotesOuvertes(notesOuvertes === c.id ? null : c.id)}
+                  className="flex items-center gap-1 text-xs text-gray-400 hover:text-[#534AB7]"
+                  title="Notes (spécialité, disponibilité…)"
+                >
+                  <StickyNote className="h-3.5 w-3.5" />
+                  {c.notes ? 'Notes' : 'Ajouter une note'}
+                </button>
+              </div>
+
+              {notesOuvertes === c.id && (
+                <div className="pl-5">
+                  <Input className="h-8 text-xs w-full max-w-md" placeholder="Spécialité, disponibilité, remarque…"
+                    defaultValue={c.notes ?? ''}
+                    onBlur={(e) => e.target.value.trim() !== (c.notes ?? '') && update(c.id, 'notes', e.target.value.trim() || null)} />
+                </div>
+              )}
 
               {/* Charge de travail actuelle */}
               <div className="pl-5 flex items-center gap-2 flex-wrap text-xs">
@@ -248,13 +292,17 @@ export function CollaborateursManager({
             <label className="text-xs text-gray-500">Nouveau collaborateur</label>
             <Input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom" className="h-9" />
           </div>
-          <div className="w-40">
+          <div className="w-36">
             <label className="text-xs text-gray-500">Rôle (optionnel)</label>
             <Input value={role} onChange={(e) => setRole(e.target.value)} placeholder="ex: Chef de projet" className="h-9 text-xs" />
           </div>
-          <div className="w-52">
+          <div className="w-48">
             <label className="text-xs text-gray-500">Email (optionnel)</label>
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@exemple.com" className="h-9 text-xs" />
+          </div>
+          <div className="w-36">
+            <label className="text-xs text-gray-500">Téléphone (optionnel)</label>
+            <Input type="tel" value={telephone} onChange={(e) => setTelephone(e.target.value)} placeholder="+33 6 00 00 00 00" className="h-9 text-xs" />
           </div>
           <div className="flex gap-1 pb-2">
             {COULEURS.map((col) => (

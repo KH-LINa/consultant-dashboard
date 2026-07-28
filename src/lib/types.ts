@@ -59,8 +59,18 @@ export interface Collaborateur {
   id: string
   nom: string
   email: string | null
+  telephone: string | null
   role: string | null
   couleur: string
+  // Identifiant lisible ("COL-0001"), attribué automatiquement en base à la
+  // création (trigger) — jamais réattribué, même schéma que
+  // contacts.code_client.
+  code_collaborateur: string | null
+  notes: string | null
+  // Faux = ne travaille plus avec l'agence — reste visible pour préserver
+  // son historique (missions/projets passés), mais distingué visuellement
+  // des collaborateurs en activité plutôt que supprimé.
+  actif: boolean
   // Lien optionnel vers une ressource facturable (resources.id) — un
   // collaborateur (qui peut être "responsable" d'une mission/projet/tâche)
   // PEUT aussi être une ressource (suivi d'heures/coût sur des projets),
