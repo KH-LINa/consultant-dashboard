@@ -369,19 +369,36 @@ export interface ProjetEnRisquePoc {
   projectTitre: string
   phaseTitre: string
   joursDeRetard: number
+  // Vrai si la phase bloquante est explicitement un POC/preuve de concept
+  // (voir 01-methodologie/grille-diagnostic-maturite-ia.md) — sinon, c'est
+  // une transition de phase générique qui accroche, même logique de risque.
+  estZonePoc: boolean
 }
 
+const RE_POC = /\bpoc\b|preuve de concept/i
+
 /**
- * Détecte les projets bloqués dans la "zone de friction POC → Production"
- * (voir 01-methodologie/grille-diagnostic-maturite-ia.md — l'essentiel des
- * projets IA industriels s'arrêtent entre le POC et la production, pas sur
- * l'algorithme). Un projet est signalé si :
- * - il a une phase dont le titre évoque un POC ("POC", "preuve de concept") ;
- * - la date de fin de cette phase est dépassée ;
- * - aucune phase suivante (ordre supérieur) n'a de tâche entamée ("en_cours"
- *   ou "fait") — rien n'a démarré après le POC.
- * Projets déjà "terminé" ou "annulé" ignorés. Fonction pure, pensée pour
- * tourner sur l'ensemble des projets/phases/tâches en une passe (dashboard).
+ * Détecte les projets bloqués à une transition de phase — inspiré de la
+ * "zone de friction POC → Production" (voir
+ * 01-methodologie/grille-diagnostic-maturite-ia.md : l'essentiel des
+ * projets IA industriels s'arrêtent à une transition, pas sur
+ * l'algorithme), mais généralisé à N'IMPORTE QUELLE transition plutôt que
+ * seulement une phase nommée "POC" — un projet réel généré depuis un devis
+ * a rarement une phase littéralement appelée ainsi (ex. "Diagnostic",
+ * "Proposition commerciale"), la version stricte ne détectait donc presque
+ * jamais rien en pratique.
+ *
+ * Un projet est signalé si :
+ * - il a au moins 2 phases (une transition suppose une phase "après") ;
+ * - la DERNIÈRE phase (par ordre) dont l'échéance est dépassée n'est pas la
+ *   toute dernière phase du projet ;
+ * - aucune phase suivante n'a de tâche entamée ("en_cours" ou "fait") —
+ *   rien n'a démarré après.
+ * `estZonePoc` distingue le cas où la phase bloquante correspond
+ * explicitement au vocabulaire POC, pour un message plus spécifique côté
+ * affichage. Projets déjà "terminé" ou "annulé" ignorés. Fonction pure,
+ * pensée pour tourner sur l'ensemble des projets/phases/tâches en une
+ * passe (dashboard).
  */
 export function detecterFrictionPocProduction(
   projects: Pick<Project, 'id' | 'titre' | 'statut'>[],
@@ -397,20 +414,26 @@ export function detecterFrictionPocProduction(
     const phasesDuProjet = phases
       .filter((p) => p.project_id === project.id)
       .sort((a, b) => a.ordre - b.ordre)
-    const phasePoc = phasesDuProjet.find((p) => /\bpoc\b|preuve de concept/i.test(p.titre))
-    if (!phasePoc || !phasePoc.date_fin || phasePoc.date_fin >= today) continue
+    if (phasesDuProjet.length < 2) continue
 
-    const phasesSuivantes = phasesDuProjet.filter((p) => p.ordre > phasePoc.ordre)
-    const progressionApresPoc = phasesSuivantes.some((p) =>
+    const ordreMax = phasesDuProjet[phasesDuProjet.length - 1].ordre
+    const phaseBloquante = [...phasesDuProjet].reverse().find(
+      (p): p is typeof p & { date_fin: string } => !!p.date_fin && p.date_fin < today && p.ordre < ordreMax
+    )
+    if (!phaseBloquante) continue
+
+    const phasesSuivantes = phasesDuProjet.filter((p) => p.ordre > phaseBloquante.ordre)
+    const progressionApres = phasesSuivantes.some((p) =>
       tasks.some((t) => t.phase_id === p.id && (t.statut === 'en_cours' || t.statut === 'fait'))
     )
-    if (progressionApresPoc) continue
+    if (progressionApres) continue
 
     const joursDeRetard = Math.floor(
-      (Date.now() - new Date(phasePoc.date_fin + 'T00:00:00').getTime()) / 86_400_000
+      (Date.now() - new Date(phaseBloquante.date_fin + 'T00:00:00').getTime()) / 86_400_000
     )
     resultats.push({
-      projectId: project.id, projectTitre: project.titre, phaseTitre: phasePoc.titre, joursDeRetard,
+      projectId: project.id, projectTitre: project.titre, phaseTitre: phaseBloquante.titre,
+      joursDeRetard, estZonePoc: RE_POC.test(phaseBloquante.titre),
     })
   }
 

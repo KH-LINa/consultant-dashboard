@@ -248,16 +248,49 @@ function ilYAmois(mois: number): string {
 }
 
 describe('detecterFrictionPocProduction', () => {
-  it('signale un projet dont la phase POC est dépassée sans progression après', () => {
+  it('signale un projet dont la phase POC est dépassée sans progression après (estZonePoc = true)', () => {
     const projects = [projet('pr1', 'en_cours')]
     const phases = [
       { ...phase('poc', ilYA(20), ilYA(15)), titre: 'Preuve de concept (POC)', project_id: 'pr1', ordre: 0 },
+      { ...phase('prod', ilYA(14), ilYA(1)), titre: 'Production', project_id: 'pr1', ordre: 1 },
     ]
-    const tasks = [{ phase_id: 'poc', statut: 'a_faire' as ProjectTaskStatus }]
+    const tasks = [{ phase_id: 'poc', statut: 'fait' as ProjectTaskStatus }, { phase_id: 'prod', statut: 'a_faire' as ProjectTaskStatus }]
     const resultats = detecterFrictionPocProduction(projects, phases, tasks)
     expect(resultats).toHaveLength(1)
     expect(resultats[0].projectId).toBe('pr1')
-    expect(resultats[0].joursDeRetard).toBeGreaterThanOrEqual(15)
+    expect(resultats[0].estZonePoc).toBe(true)
+    expect(resultats[0].joursDeRetard).toBeGreaterThanOrEqual(1)
+  })
+
+  it('signale aussi une transition générique, sans phase nommée POC (estZonePoc = false)', () => {
+    // Cas réel le plus fréquent : phases générées depuis un devis, nommées
+    // librement (Diagnostic, Proposition commerciale...), jamais "POC".
+    const projects = [projet('pr1', 'en_cours')]
+    const phases = [
+      { ...phase('diag', ilYA(30), ilYA(20)), titre: 'Diagnostic', project_id: 'pr1', ordre: 0 },
+      { ...phase('prop', ilYA(19), ilYA(10)), titre: 'Proposition commerciale', project_id: 'pr1', ordre: 1 },
+      { ...phase('mise', ilYA(9), ilYAmois(-1)), titre: 'Mise en œuvre', project_id: 'pr1', ordre: 2 },
+    ]
+    const resultats = detecterFrictionPocProduction(projects, phases, [])
+    expect(resultats).toHaveLength(1)
+    expect(resultats[0].phaseTitre).toBe('Proposition commerciale')
+    expect(resultats[0].estZonePoc).toBe(false)
+  })
+
+  it('ne signale rien pour un projet à une seule phase (pas de transition possible)', () => {
+    const projects = [projet('pr1', 'en_cours')]
+    const phases = [{ ...phase('unique', ilYA(20), ilYA(15)), titre: 'Audit', project_id: 'pr1', ordre: 0 }]
+    expect(detecterFrictionPocProduction(projects, phases, [])).toHaveLength(0)
+  })
+
+  it('ne signale rien si c\'est la toute dernière phase qui est en retard (rien après à bloquer)', () => {
+    const projects = [projet('pr1', 'en_cours')]
+    const phases = [
+      { ...phase('p0', ilYA(30), ilYA(20)), titre: 'Cadrage', project_id: 'pr1', ordre: 0 },
+      { ...phase('p1', ilYA(19), ilYA(1)), titre: 'Déploiement', project_id: 'pr1', ordre: 1 },
+    ]
+    const tasks = [{ phase_id: 'p1', statut: 'en_cours' as ProjectTaskStatus }]
+    expect(detecterFrictionPocProduction(projects, phases, tasks)).toHaveLength(0)
   })
 
   it('ne signale rien si une phase suivante a une tâche entamée', () => {
@@ -272,8 +305,12 @@ describe('detecterFrictionPocProduction', () => {
 
   it('ne signale rien si la phase POC n\'est pas encore terminée', () => {
     const projects = [projet('pr1', 'en_cours')]
-    const d = new Date(); d.setDate(d.getDate() + 10)
-    const phases = [{ ...phase('poc', ilYA(5), toLocalISO(d)), titre: 'POC', project_id: 'pr1', ordre: 0 }]
+    const d1 = new Date(); d1.setDate(d1.getDate() + 10)
+    const d2 = new Date(); d2.setDate(d2.getDate() + 20)
+    const phases = [
+      { ...phase('poc', ilYA(5), toLocalISO(d1)), titre: 'POC', project_id: 'pr1', ordre: 0 },
+      { ...phase('prod', toLocalISO(d1), toLocalISO(d2)), titre: 'Production', project_id: 'pr1', ordre: 1 },
+    ]
     expect(detecterFrictionPocProduction(projects, phases, [])).toHaveLength(0)
   })
 
@@ -283,12 +320,6 @@ describe('detecterFrictionPocProduction', () => {
       { ...phase('poc1', ilYA(20), ilYA(15)), titre: 'POC', project_id: 'pr1', ordre: 0 },
       { ...phase('poc2', ilYA(20), ilYA(15)), titre: 'POC', project_id: 'pr2', ordre: 0 },
     ]
-    expect(detecterFrictionPocProduction(projects, phases, [])).toHaveLength(0)
-  })
-
-  it('ignore un projet sans phase évoquant un POC', () => {
-    const projects = [projet('pr1', 'en_cours')]
-    const phases = [{ ...phase('audit', ilYA(20), ilYA(15)), titre: 'Audit', project_id: 'pr1', ordre: 0 }]
     expect(detecterFrictionPocProduction(projects, phases, [])).toHaveLength(0)
   })
 })
