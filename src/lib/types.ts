@@ -61,6 +61,13 @@ export interface Collaborateur {
   email: string | null
   role: string | null
   couleur: string
+  // Lien optionnel vers une ressource facturable (resources.id) — un
+  // collaborateur (qui peut être "responsable" d'une mission/projet/tâche)
+  // PEUT aussi être une ressource (suivi d'heures/coût sur des projets),
+  // mais les deux restent des tables distinctes : un responsable non facturé
+  // (l'admin lui-même, par ex.) n'a pas besoin de ressource liée. Unique
+  // côté base : une ressource n'est liée qu'à un seul collaborateur.
+  resource_id: string | null
   created_at: string
 }
 

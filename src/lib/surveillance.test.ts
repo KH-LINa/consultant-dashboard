@@ -50,7 +50,7 @@ function tachePeriode(
 }
 
 function collaborateur(id: string, nom: string): Collaborateur {
-  return { id, nom, email: null, role: null, couleur: '#000', created_at: '' }
+  return { id, nom, email: null, role: null, couleur: '#000', resource_id: null, created_at: '' }
 }
 
 function resource(id: string, nom: string, email: string | null = null, type: Resource['type'] = 'humain'): Resource {

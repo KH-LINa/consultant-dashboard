@@ -15,6 +15,7 @@ import {
 import { Plus, Trash2, User, Wrench, HardHat, Link2, CalendarDays } from 'lucide-react'
 import { toast } from 'sonner'
 import { ResourceCalendar, MOTIF_LABEL, MOTIF_COLOR } from '@/components/ressources/resource-calendar'
+import NextLink from 'next/link'
 
 const TYPE_LABEL: Record<ResourceType, string> = { humain: 'Humain', materiel: 'Matériel' }
 const NONE = '__none__'
@@ -33,11 +34,22 @@ interface ResourcesManagerProps {
   assignments: ResourceAssignment[]
   projects: { id: string; titre: string }[]
   unavailabilities: ResourceUnavailability[]
+  // Collaborateurs liés à une ressource (resources.id → collaborateurs.nom)
+  // — voir /collaborateurs. Une ressource facturable peut correspondre à un
+  // collaborateur (responsable de missions/projets/tâches), sans que ce
+  // soit systématique.
+  collaborateurs?: { id: string; nom: string; resource_id: string | null }[]
 }
 
-export function ResourcesManager({ resources, assignments, projects, unavailabilities }: ResourcesManagerProps) {
+export function ResourcesManager({
+  resources, assignments, projects, unavailabilities, collaborateurs = [],
+}: ResourcesManagerProps) {
   const router = useRouter()
   const supabase = createClient()
+  const collaborateurByResource = useMemo(
+    () => new Map(collaborateurs.filter((c) => c.resource_id).map((c) => [c.resource_id as string, c])),
+    [collaborateurs]
+  )
 
   // Formulaire nouvelle ressource
   const [nom, setNom] = useState('')
@@ -227,6 +239,13 @@ export function ResourcesManager({ resources, assignments, projects, unavailabil
                     }} />
                 )}
                 <div className="ml-auto flex items-center gap-3 text-xs text-gray-500">
+                  {collaborateurByResource.has(r.id) && (
+                    <NextLink href="/collaborateurs" className="flex items-center gap-1 text-gray-400 hover:text-[#534AB7]"
+                      title="Lié au collaborateur — voir /collaborateurs">
+                      <Link2 className="h-3 w-3" />
+                      {collaborateurByResource.get(r.id)!.nom}
+                    </NextLink>
+                  )}
                   {totalHeures > 0 && <span>{totalHeures} h</span>}
                   {coutEstime > 0 && <span className="font-medium text-[#534AB7]">{euros(coutEstime)}</span>}
                   <Button variant="ghost" size="sm" onClick={() => removeResource(r.id)}

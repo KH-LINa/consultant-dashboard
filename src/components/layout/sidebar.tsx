@@ -22,6 +22,7 @@ import {
   Briefcase,
   FileSignature,
   HardHat,
+  UserCog,
   CalendarDays,
   X,
 } from 'lucide-react'
@@ -37,6 +38,7 @@ const navItems = [
   { href: '/missions', label: 'Missions', icon: FolderKanban },
   { href: '/factures', label: 'Factures', icon: Receipt },
   { href: '/projets', label: 'Projets', icon: FolderGit2 },
+  { href: '/collaborateurs', label: 'Collaborateurs', icon: UserCog },
   { href: '/ressources', label: 'Ressources', icon: HardHat },
   { href: '/relances', label: 'Relances', icon: Bell },
   { href: '/comptabilite', label: 'Comptabilité', icon: Landmark },
