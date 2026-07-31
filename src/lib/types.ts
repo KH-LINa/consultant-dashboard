@@ -78,8 +78,18 @@ export interface Collaborateur {
   // (l'admin lui-même, par ex.) n'a pas besoin de ressource liée. Unique
   // côté base : une ressource n'est liée qu'à un seul collaborateur.
   resource_id: string | null
+  // Champs "fiche salarié" — indépendants du lien resource_id ci-dessus :
+  // un collaborateur non facturé (donc sans Ressource liée) a quand même
+  // une date d'entrée, un type de contrat et un coût réel pour l'entreprise.
+  date_entree: string | null
+  type_contrat: ContratType | null
+  cout_horaire: number
+  competences: string[]
+  photo_url: string | null
   created_at: string
 }
+
+export type ContratType = 'CDI' | 'CDD' | 'Freelance' | 'Alternance' | 'Stage'
 
 // Rôle d'accès à l'outil (à ne pas confondre avec Collaborateur.role, qui
 // est un intitulé de poste libre) : admin = accès complet + gestion des

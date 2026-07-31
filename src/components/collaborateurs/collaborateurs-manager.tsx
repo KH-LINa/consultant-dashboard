@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type {
-  Collaborateur, Resource, ResourceAssignment, MissionStatus, ProjectStatus,
+  Collaborateur, Resource, ResourceAssignment, MissionStatus, ProjectStatus, ContratType,
 } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -13,14 +13,41 @@ import { Button } from '@/components/ui/button'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Plus, Trash2, Users, Link2, Unlink, StickyNote } from 'lucide-react'
+import { AvatarCollaborateur } from '@/components/collaborateurs/avatar-collaborateur'
+import { CompetencesTags } from '@/components/collaborateurs/competences-tags'
+import { Plus, Trash2, Users, Link2, Unlink, StickyNote, Mail, Phone, CalendarClock } from 'lucide-react'
 import { toast } from 'sonner'
 
 const COULEURS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#64748b']
 const NONE = '__none__'
 
+const TYPES_CONTRAT: ContratType[] = ['CDI', 'CDD', 'Freelance', 'Alternance', 'Stage']
+const CONTRAT_STYLE: Record<ContratType, string> = {
+  CDI: 'bg-green-100 text-green-700',
+  CDD: 'bg-blue-100 text-blue-700',
+  Freelance: 'bg-purple-100 text-purple-700',
+  Alternance: 'bg-amber-100 text-amber-700',
+  Stage: 'bg-gray-100 text-gray-600',
+}
+
 function euros(n: number): string {
   return n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })
+}
+
+// Ancienneté affichée en mois sous un an, en années (+ mois restants si non
+// ronds) au-delà — null si pas de date d'entrée renseignée ou date future.
+function anciennete(dateEntree: string | null): string | null {
+  if (!dateEntree) return null
+  const debut = new Date(dateEntree + 'T00:00:00')
+  const maintenant = new Date()
+  let mois = (maintenant.getFullYear() - debut.getFullYear()) * 12 + (maintenant.getMonth() - debut.getMonth())
+  if (maintenant.getDate() < debut.getDate()) mois -= 1
+  if (mois < 0) return null
+  if (mois < 1) return '< 1 mois'
+  if (mois < 12) return `${mois} mois`
+  const ans = Math.floor(mois / 12)
+  const reste = mois % 12
+  return reste === 0 ? `${ans} an${ans > 1 ? 's' : ''}` : `${ans} an${ans > 1 ? 's' : ''} ${reste} mois`
 }
 
 interface MissionLite { id: string; titre: string; statut: MissionStatus; responsable_id: string | null }
@@ -124,7 +151,7 @@ export function CollaborateursManager({
     }
   }
 
-  async function update(id: string, field: string, value: string | boolean | null) {
+  async function update(id: string, field: string, value: string | number | boolean | string[] | null) {
     const { error } = await supabase.from('collaborateurs').update({ [field]: value }).eq('id', id)
     if (error) toast.error(error.message); else router.refresh()
   }
@@ -143,7 +170,7 @@ export function CollaborateursManager({
           Collaborateurs ({collaborateurs.length})
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
         {collaborateurs.length === 0 && (
           <p className="text-sm text-gray-400 py-4 text-center">
             Aucun collaborateur. Ajoutez toute personne pouvant être responsable d&apos;une
@@ -152,140 +179,182 @@ export function CollaborateursManager({
           </p>
         )}
 
-        {collaborateursTries.map((c) => {
-          const res = c.resource_id ? resourceById.get(c.resource_id) : null
-          const affs = res ? (assignmentsByResource.get(res.id) ?? []) : []
-          const totalHeures = affs.reduce((s, a) => s + (a.heures || 0), 0)
-          const totalBudget = affs.reduce((s, a) => s + (a.budget || 0), 0)
-          const coutEstime = res ? totalHeures * (res.cout_horaire || 0) + totalBudget : 0
-          const missionsActives = (missionsByResp.get(c.id) ?? []).filter((m) => m.statut !== 'terminee' && m.statut !== 'annulee')
-          const projetsActifs = (projectsByResp.get(c.id) ?? []).filter((p) => p.statut !== 'termine' && p.statut !== 'annule')
-          const tachesEnCours = tachesEnCoursByResp.get(c.id) ?? 0
-          const sansParticipation = missionsActives.length === 0 && projetsActifs.length === 0 && tachesEnCours === 0
-          const resourcesSelectionnables = resources.filter((r) => r.id === c.resource_id || !dejaLiees.has(r.id))
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {collaborateursTries.map((c) => {
+            const res = c.resource_id ? resourceById.get(c.resource_id) : null
+            const affs = res ? (assignmentsByResource.get(res.id) ?? []) : []
+            const totalHeures = affs.reduce((s, a) => s + (a.heures || 0), 0)
+            const totalBudget = affs.reduce((s, a) => s + (a.budget || 0), 0)
+            const coutEstime = res ? totalHeures * (res.cout_horaire || 0) + totalBudget : 0
+            const missionsActives = (missionsByResp.get(c.id) ?? []).filter((m) => m.statut !== 'terminee' && m.statut !== 'annulee')
+            const projetsActifs = (projectsByResp.get(c.id) ?? []).filter((p) => p.statut !== 'termine' && p.statut !== 'annule')
+            const tachesEnCours = tachesEnCoursByResp.get(c.id) ?? 0
+            const sansParticipation = missionsActives.length === 0 && projetsActifs.length === 0 && tachesEnCours === 0
+            const resourcesSelectionnables = resources.filter((r) => r.id === c.resource_id || !dejaLiees.has(r.id))
+            const anc = anciennete(c.date_entree)
 
-          return (
-            <div key={c.id} className={`border rounded-lg p-3 space-y-2 group ${c.actif ? '' : 'opacity-60 bg-gray-50/50'}`}>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="w-3 h-3 rounded-full shrink-0" style={{ background: c.couleur }} />
-                <Input className="h-8 w-40 font-medium" defaultValue={c.nom}
-                  onBlur={(e) => e.target.value.trim() && e.target.value !== c.nom && update(c.id, 'nom', e.target.value.trim())} />
-                {c.code_collaborateur && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 shrink-0">
-                    {c.code_collaborateur}
-                  </span>
-                )}
-                {!c.actif && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600 shrink-0">Inactif</span>
-                )}
-                <div className="flex gap-1">
-                  {COULEURS.map((col) => (
-                    <button key={col} type="button" onClick={() => update(c.id, 'couleur', col)}
-                      className={`w-4 h-4 rounded-full border-2 ${c.couleur === col ? 'border-gray-800' : 'border-transparent'}`}
-                      style={{ background: col }} />
-                  ))}
+            return (
+              <div key={c.id} className={`rounded-xl border p-4 space-y-3 group ${c.actif ? '' : 'opacity-60 bg-gray-50/50'}`}>
+                <div className="flex items-start gap-3">
+                  <AvatarCollaborateur
+                    collaborateurId={c.id} nom={c.nom} couleur={c.couleur} photoUrl={c.photo_url}
+                    taille="lg" editable
+                  />
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Input className="h-7 w-36 font-semibold px-1.5" defaultValue={c.nom}
+                        onBlur={(e) => e.target.value.trim() && e.target.value !== c.nom && update(c.id, 'nom', e.target.value.trim())} />
+                      {c.code_collaborateur && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 shrink-0">
+                          {c.code_collaborateur}
+                        </span>
+                      )}
+                      <Button variant="ghost" size="sm" onClick={() => remove(c.id)}
+                        className="ml-auto h-7 w-7 p-0 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+
+                    <Input className="h-7 text-xs px-1.5 w-44" placeholder="Rôle (optionnel)" defaultValue={c.role ?? ''}
+                      onBlur={(e) => e.target.value.trim() !== (c.role ?? '') && update(c.id, 'role', e.target.value.trim() || null)} />
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Select value={c.type_contrat ?? NONE} onValueChange={(v) => update(c.id, 'type_contrat', v === NONE ? null : v)}>
+                        <SelectTrigger className="h-6 w-auto gap-1 border-none bg-transparent px-0 shadow-none [&>svg]:h-3 [&>svg]:w-3">
+                          <SelectValue>
+                            {(v: string) => v === NONE ? (
+                              <span className="text-[11px] text-gray-300">— contrat —</span>
+                            ) : (
+                              <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${CONTRAT_STYLE[v as ContratType]}`}>{v}</span>
+                            )}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE}>— Non renseigné —</SelectItem>
+                          {TYPES_CONTRAT.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <Input type="date" title="Date d'entrée"
+                        className="h-6 w-[118px] border-none bg-transparent px-1 text-[11px] text-gray-400 shadow-none"
+                        defaultValue={c.date_entree ?? ''}
+                        onChange={(e) => update(c.id, 'date_entree', e.target.value || null)} />
+                      {anc && (
+                        <span className="flex items-center gap-1 text-[11px] text-gray-400" title="Ancienneté">
+                          <CalendarClock className="h-3 w-3" />
+                          {anc}
+                        </span>
+                      )}
+                      <label className="flex items-center gap-1.5 text-[11px] text-gray-500 ml-auto cursor-pointer">
+                        <input type="checkbox" checked={c.actif} onChange={(e) => update(c.id, 'actif', e.target.checked)}
+                          className="h-3.5 w-3.5 rounded border-gray-300" />
+                        Actif
+                      </label>
+                    </div>
+                  </div>
                 </div>
-                <label className="flex items-center gap-1.5 text-xs text-gray-500 ml-2 cursor-pointer">
-                  <input type="checkbox" checked={c.actif} onChange={(e) => update(c.id, 'actif', e.target.checked)}
-                    className="h-3.5 w-3.5 rounded border-gray-300" />
-                  Actif
-                </label>
-                <Button variant="ghost" size="sm" onClick={() => remove(c.id)}
-                  className="ml-auto h-8 w-8 p-0 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
 
-              <div className="pl-5 flex items-center gap-2 flex-wrap">
-                <Input className="h-8 w-36 text-xs" placeholder="Rôle (optionnel)" defaultValue={c.role ?? ''}
-                  onBlur={(e) => e.target.value.trim() !== (c.role ?? '') && update(c.id, 'role', e.target.value.trim() || null)} />
-                <Input type="email" className="h-8 w-48 text-xs" placeholder="email (optionnel)" defaultValue={c.email ?? ''}
-                  onBlur={(e) => e.target.value.trim() !== (c.email ?? '') && update(c.id, 'email', e.target.value.trim() || null)} />
-                <Input type="tel" className="h-8 w-40 text-xs" placeholder="téléphone (optionnel)" defaultValue={c.telephone ?? ''}
-                  onBlur={(e) => e.target.value.trim() !== (c.telephone ?? '') && update(c.id, 'telephone', e.target.value.trim() || null)} />
-                <button
-                  onClick={() => setNotesOuvertes(notesOuvertes === c.id ? null : c.id)}
-                  className="flex items-center gap-1 text-xs text-gray-400 hover:text-[#534AB7]"
-                  title="Notes (spécialité, disponibilité…)"
-                >
-                  <StickyNote className="h-3.5 w-3.5" />
-                  {c.notes ? 'Notes' : 'Ajouter une note'}
-                </button>
-              </div>
+                <CompetencesTags competences={c.competences} onChange={(next) => update(c.id, 'competences', next)} />
 
-              {notesOuvertes === c.id && (
-                <div className="pl-5">
-                  <Input className="h-8 text-xs w-full max-w-md" placeholder="Spécialité, disponibilité, remarque…"
+                {/* Charge de travail actuelle */}
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  {sansParticipation ? (
+                    <span className="text-gray-400">Ne participe à aucun projet/mission en cours actuellement.</span>
+                  ) : (
+                    <button onClick={() => setExpanded(expanded === c.id ? null : c.id)} className="flex items-center gap-2 flex-wrap hover:opacity-80">
+                      {missionsActives.length > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">
+                          {missionsActives.length} mission{missionsActives.length > 1 ? 's' : ''} active{missionsActives.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                      {projetsActifs.length > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-[#EEEBFA] text-[#534AB7] font-medium">
+                          {projetsActifs.length} projet{projetsActifs.length > 1 ? 's' : ''} actif{projetsActifs.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                      {tachesEnCours > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-medium">
+                          {tachesEnCours} tâche{tachesEnCours > 1 ? 's' : ''} en cours
+                        </span>
+                      )}
+                    </button>
+                  )}
+                </div>
+                {expanded === c.id && !sansParticipation && (
+                  <div className="space-y-1 text-xs text-gray-600">
+                    {missionsActives.map((m) => (
+                      <Link key={m.id} href={`/missions/${m.id}`} className="block hover:underline">→ {m.titre}</Link>
+                    ))}
+                    {projetsActifs.map((p) => (
+                      <Link key={p.id} href={`/projets/${p.id}`} className="block hover:underline">→ {p.titre}</Link>
+                    ))}
+                  </div>
+                )}
+
+                {/* Contact */}
+                <div className="flex items-center gap-2 flex-wrap pt-2 border-t">
+                  <Mail className="h-3 w-3 text-gray-300 shrink-0" />
+                  <Input type="email" className="h-7 text-xs flex-1 min-w-[130px]" placeholder="email (optionnel)" defaultValue={c.email ?? ''}
+                    onBlur={(e) => e.target.value.trim() !== (c.email ?? '') && update(c.id, 'email', e.target.value.trim() || null)} />
+                  <Phone className="h-3 w-3 text-gray-300 shrink-0" />
+                  <Input type="tel" className="h-7 text-xs w-32" placeholder="téléphone" defaultValue={c.telephone ?? ''}
+                    onBlur={(e) => e.target.value.trim() !== (c.telephone ?? '') && update(c.id, 'telephone', e.target.value.trim() || null)} />
+                  <button
+                    onClick={() => setNotesOuvertes(notesOuvertes === c.id ? null : c.id)}
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-[#534AB7]"
+                    title="Notes (spécialité, disponibilité…)"
+                  >
+                    <StickyNote className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                {notesOuvertes === c.id && (
+                  <Input className="h-8 text-xs w-full" placeholder="Spécialité, disponibilité, remarque…"
                     defaultValue={c.notes ?? ''}
                     onBlur={(e) => e.target.value.trim() !== (c.notes ?? '') && update(c.id, 'notes', e.target.value.trim() || null)} />
-                </div>
-              )}
-
-              {/* Charge de travail actuelle */}
-              <div className="pl-5 flex items-center gap-2 flex-wrap text-xs">
-                {sansParticipation ? (
-                  <span className="text-gray-400">Ne participe à aucun projet/mission en cours actuellement.</span>
-                ) : (
-                  <button onClick={() => setExpanded(expanded === c.id ? null : c.id)} className="flex items-center gap-2 flex-wrap hover:opacity-80">
-                    {missionsActives.length > 0 && (
-                      <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">
-                        {missionsActives.length} mission{missionsActives.length > 1 ? 's' : ''} active{missionsActives.length > 1 ? 's' : ''}
-                      </span>
-                    )}
-                    {projetsActifs.length > 0 && (
-                      <span className="px-2 py-0.5 rounded-full bg-[#EEEBFA] text-[#534AB7] font-medium">
-                        {projetsActifs.length} projet{projetsActifs.length > 1 ? 's' : ''} actif{projetsActifs.length > 1 ? 's' : ''}
-                      </span>
-                    )}
-                    {tachesEnCours > 0 && (
-                      <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-medium">
-                        {tachesEnCours} tâche{tachesEnCours > 1 ? 's' : ''} en cours
-                      </span>
-                    )}
-                  </button>
                 )}
-              </div>
-              {expanded === c.id && !sansParticipation && (
-                <div className="pl-5 space-y-1 text-xs text-gray-600">
-                  {missionsActives.map((m) => (
-                    <Link key={m.id} href={`/missions/${m.id}`} className="block hover:underline">→ {m.titre}</Link>
-                  ))}
-                  {projetsActifs.map((p) => (
-                    <Link key={p.id} href={`/projets/${p.id}`} className="block hover:underline">→ {p.titre}</Link>
-                  ))}
-                </div>
-              )}
 
-              {/* Lien vers une ressource facturable */}
-              <div className="pl-5 flex items-center gap-2 flex-wrap">
-                {res ? <Link2 className="h-3 w-3 text-gray-400 shrink-0" /> : <Unlink className="h-3 w-3 text-gray-300 shrink-0" />}
-                <Select
-                  value={c.resource_id ?? NONE}
-                  onValueChange={(v) => update(c.id, 'resource_id', v === NONE ? null : v)}
-                >
-                  <SelectTrigger className="h-7 text-xs w-56">
-                    <SelectValue placeholder="Aucune ressource liée">
-                      {(v: string) => v === NONE ? 'Aucune ressource liée' : resourceById.get(v)?.nom ?? 'Ressource'}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>— Aucune ressource liée —</SelectItem>
-                    {resourcesSelectionnables.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>{r.nom}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {res && (
-                  <span className="text-xs text-gray-500">
-                    {res.cout_horaire > 0 && `${res.cout_horaire} €/h`}
-                    {totalHeures > 0 && ` · ${totalHeures} h`}
+                {/* Coût + lien vers une ressource facturable */}
+                <div className="flex items-center gap-2 flex-wrap pt-2 border-t text-xs">
+                  <span className="text-gray-400">Coût</span>
+                  <Input
+                    type="number" min="0" step="1" className="h-7 w-16 text-xs text-right"
+                    key={`cout-${c.id}-${c.cout_horaire}`}
+                    defaultValue={c.cout_horaire}
+                    onBlur={(e) => {
+                      const v = Math.max(0, parseFloat(e.target.value) || 0)
+                      if (v !== c.cout_horaire) update(c.id, 'cout_horaire', v)
+                    }}
+                  />
+                  <span className="text-gray-400">€/h</span>
+                  <div className="ml-auto flex items-center gap-1.5">
+                    {res ? <Link2 className="h-3 w-3 text-gray-400 shrink-0" /> : <Unlink className="h-3 w-3 text-gray-300 shrink-0" />}
+                    <Select
+                      value={c.resource_id ?? NONE}
+                      onValueChange={(v) => update(c.id, 'resource_id', v === NONE ? null : v)}
+                    >
+                      <SelectTrigger className="h-7 text-xs w-44">
+                        <SelectValue placeholder="Aucune ressource liée">
+                          {(v: string) => v === NONE ? 'Aucune ressource liée' : resourceById.get(v)?.nom ?? 'Ressource'}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE}>— Aucune ressource liée —</SelectItem>
+                        {resourcesSelectionnables.map((r) => (
+                          <SelectItem key={r.id} value={r.id}>{r.nom}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {res && (totalHeures > 0 || coutEstime > 0) && (
+                  <p className="text-[11px] text-gray-400 text-right">
+                    {totalHeures > 0 && `${totalHeures} h`}
                     {coutEstime > 0 && ` · ${euros(coutEstime)} facturé`}
-                  </span>
+                  </p>
                 )}
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
 
         <form onSubmit={addCollaborateur} className="flex flex-wrap items-end gap-2 pt-3 border-t">
           <div className="flex-1 min-w-[160px]">
@@ -316,6 +385,9 @@ export function CollaborateursManager({
             Ajouter
           </Button>
         </form>
+        <p className="text-[11px] text-gray-400">
+          Contrat, date d&apos;entrée, coût horaire, compétences et photo se renseignent directement sur la fiche une fois le collaborateur créé.
+        </p>
       </CardContent>
     </Card>
   )
