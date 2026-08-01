@@ -53,6 +53,7 @@ function collaborateur(id: string, nom: string): Collaborateur {
   return {
     id, nom, email: null, telephone: null, role: null, couleur: '#000',
     code_collaborateur: null, notes: null, actif: true, resource_id: null, created_at: '',
+    date_entree: null, type_contrat: null, cout_horaire: 0, competences: [], photo_url: null,
   }
 }
 
