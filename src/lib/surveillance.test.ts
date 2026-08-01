@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
   alertesProjet, alertesTousProjets, nbAlertes, conflitsCollaborateurs, conflitsRessourcesModule,
-  conflitsIndisponibilite, recapsRessources,
+  conflitsIndisponibilite, conflitsIndisponibiliteCollaborateurs, indisponibiliteChevauchante, recapsRessources,
 } from './surveillance'
 import { feriesSet } from './jours-ouvres'
 import type {
   Project, ProjectTask, ProjectPhase, ProjectMilestone, TaskDependency, PhaseDependency,
   Collaborateur, Resource, ResourceAssignment, ResourceUnavailability, ResourceUnavailabilityMotif,
+  CollaborateurUnavailability,
 } from './types'
 
 const feries = feriesSet(2026, 2026)
@@ -71,6 +72,12 @@ function indisponibilite(
   id: string, resourceId: string, debut: string, fin: string, motif: ResourceUnavailabilityMotif = 'conge'
 ): ResourceUnavailability {
   return { id, resource_id: resourceId, date_debut: debut, date_fin: fin, motif, note: null, created_at: '' }
+}
+
+function indisponibiliteCollab(
+  id: string, collaborateurId: string, debut: string, fin: string, motif: ResourceUnavailabilityMotif = 'conge'
+): CollaborateurUnavailability {
+  return { id, collaborateur_id: collaborateurId, date_debut: debut, date_fin: fin, motif, note: null, created_at: '' }
 }
 
 describe('alertesProjet', () => {
@@ -349,6 +356,59 @@ describe('conflitsIndisponibilite', () => {
     const assignments = [affectation('a1', 'r1', 'p1', null)]
     const indispos = [indisponibilite('u1', 'r1', '2026-07-01', '2026-12-31', 'conge')]
     expect(conflitsIndisponibilite(assignments, [], resources, indispos, projects)).toHaveLength(0)
+  })
+})
+
+describe('indisponibiliteChevauchante', () => {
+  it('renvoie la période qui chevauche', () => {
+    const indispos = [indisponibiliteCollab('u1', 'c1', '2026-07-20', '2026-07-26', 'conge')]
+    expect(indisponibiliteChevauchante('2026-07-25', '2026-07-28', indispos)?.id).toBe('u1')
+  })
+
+  it('renvoie null si aucune période ne chevauche', () => {
+    const indispos = [indisponibiliteCollab('u1', 'c1', '2026-08-01', '2026-08-05', 'conge')]
+    expect(indisponibiliteChevauchante('2026-07-25', '2026-07-28', indispos)).toBeNull()
+  })
+})
+
+describe('conflitsIndisponibiliteCollaborateurs', () => {
+  it('détecte un collaborateur responsable d\'une tâche pendant son propre congé', () => {
+    const projects = [projet('p1')]
+    const tasks = [tachePeriode('t1', '2026-07-25', '2026-07-28', 'p1', 'c1')]
+    const collaborateurs = [collaborateur('c1', 'Madjid')]
+    const indispos = [indisponibiliteCollab('u1', 'c1', '2026-07-20', '2026-07-26', 'conge')]
+    const conflits = conflitsIndisponibiliteCollaborateurs(tasks, projects, collaborateurs, indispos)
+    expect(conflits).toHaveLength(1)
+    expect(conflits[0].collaborateurNom).toBe('Madjid')
+    expect(conflits[0].motif).toBe('conge')
+    expect(conflits[0].projetTitre).toBe('Projet p1')
+  })
+
+  it('pas de conflit si la période ne chevauche pas la tâche', () => {
+    const projects = [projet('p1')]
+    const tasks = [tachePeriode('t1', '2026-07-25', '2026-07-28', 'p1', 'c1')]
+    const collaborateurs = [collaborateur('c1', 'Madjid')]
+    const indispos = [indisponibiliteCollab('u1', 'c1', '2026-08-01', '2026-08-05', 'conge')]
+    expect(conflitsIndisponibiliteCollaborateurs(tasks, projects, collaborateurs, indispos)).toHaveLength(0)
+  })
+
+  it('ignore les indisponibilités d\'un AUTRE collaborateur', () => {
+    const projects = [projet('p1')]
+    const tasks = [tachePeriode('t1', '2026-07-25', '2026-07-28', 'p1', 'c1')]
+    const collaborateurs = [collaborateur('c1', 'Madjid'), collaborateur('c2', 'Lina')]
+    const indispos = [indisponibiliteCollab('u1', 'c2', '2026-07-25', '2026-07-28', 'maladie')]
+    expect(conflitsIndisponibiliteCollaborateurs(tasks, projects, collaborateurs, indispos)).toHaveLength(0)
+  })
+
+  it('ignore les tâches sans responsable ou sans dates', () => {
+    const projects = [projet('p1')]
+    const tasks = [
+      tachePeriode('t1', '2026-07-25', '2026-07-28', 'p1', null),
+      { ...tachePeriode('t2', '2026-07-25', '2026-07-28', 'p1', 'c1'), date_debut: null },
+    ]
+    const collaborateurs = [collaborateur('c1', 'Madjid')]
+    const indispos = [indisponibiliteCollab('u1', 'c1', '2026-07-01', '2026-12-31', 'conge')]
+    expect(conflitsIndisponibiliteCollaborateurs(tasks, projects, collaborateurs, indispos)).toHaveLength(0)
   })
 })
 

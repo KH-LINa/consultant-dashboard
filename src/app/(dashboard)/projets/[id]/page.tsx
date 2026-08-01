@@ -36,6 +36,7 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
     { data: milestones },
     { data: tasks },
     { data: missions },
+    { data: unavailabilities },
   ] = await Promise.all([
     supabase.from('projects').select('*, contact:contacts(nom, entreprise), responsable:collaborateurs(nom, couleur), quote:quotes(lignes)').eq('id', params.id).single(),
     supabase.from('collaborateurs').select('*').order('nom'),
@@ -43,6 +44,9 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
     supabase.from('project_milestones').select('*').eq('project_id', params.id).order('date_echeance'),
     supabase.from('project_tasks').select('*').eq('project_id', params.id).order('ordre'),
     supabase.from('missions').select('id, titre, statut').eq('project_id', params.id).order('created_at', { ascending: false }),
+    // Garde-fou (non bloquant) : avertir si une tâche est assignée à un
+    // collaborateur en congé/absence sur la période — voir TasksManager.
+    supabase.from('collaborateur_unavailability').select('*'),
   ])
 
   if (!project) notFound()
@@ -197,6 +201,7 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
         phases={phases ?? []}
         collaborateurs={collaborateurs ?? []}
         commentCounts={commentCounts}
+        unavailabilities={unavailabilities ?? []}
       />
       <DependenciesManager projectId={project.id} tasks={tasksList} dependencies={dependencies ?? []} />
 

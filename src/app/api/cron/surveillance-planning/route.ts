@@ -6,13 +6,14 @@ import { toLocalISO } from '@/lib/gantt-deps'
 import { feriesCourants } from '@/lib/jours-ouvres'
 import {
   alertesTousProjets, nbAlertes, conflitsCollaborateurs, conflitsRessourcesModule, conflitsIndisponibilite,
-  recapsRessources,
-  type AlerteProjet, type ConflitRessource, type ConflitIndisponibilite, type RecapRessource,
+  conflitsIndisponibiliteCollaborateurs, recapsRessources,
+  type AlerteProjet, type ConflitRessource, type ConflitIndisponibilite, type ConflitIndisponibiliteCollaborateur,
+  type RecapRessource,
 } from '@/lib/surveillance'
 import type {
   Project, ProjectPhase, ProjectTask, ProjectMilestone, TaskDependency, PhaseDependency,
   Collaborateur, Resource, ResourceAssignment, ResourceUnavailability, ResourceUnavailabilityMotif,
-  ProjectTaskStatus,
+  CollaborateurUnavailability, ProjectTaskStatus,
 } from '@/lib/types'
 
 const MOTIF_LABEL: Record<ResourceUnavailabilityMotif, string> = {
@@ -114,6 +115,22 @@ function renderConflitsIndisponibiliteHtml(conflits: ConflitIndisponibilite[], o
   `
 }
 
+function renderConflitsIndisponibiliteCollaborateursHtml(conflits: ConflitIndisponibiliteCollaborateur[], origin: string): string {
+  if (conflits.length === 0) return ''
+  return `
+    <div style="margin-bottom:28px; padding-bottom:20px; border-bottom:1px solid #e5e7eb;">
+      <h3 style="margin:0 0 10px; font-size:15px; color:#b91c1c;">⚠ Collaborateur assigné pendant son indisponibilité</h3>
+      <ul style="margin:0; padding-left:20px; font-size:13px; color:#374151;">
+        ${conflits.map((c) => `
+          <li style="margin-bottom:6px;">
+            <strong>${esc(c.collaborateurNom)}</strong> est ${MOTIF_LABEL[c.motif].toLowerCase()} du ${fmt(c.indispoDebut)} au ${fmt(c.indispoFin)},
+            mais responsable de « <a href="${origin}/projets/${c.projetId}?tache=${c.tacheId}" style="color:#534AB7;">${esc(c.tacheTitre)}</a> » (${esc(c.projetTitre)}, ${fmtPeriode(c.tacheDebut, c.tacheFin, null, null)})
+          </li>`).join('')}
+      </ul>
+    </div>
+  `
+}
+
 function renderRecapRessourceHtml(recap: RecapRessource, origin: string, fromName: string): string {
   return `
     <div style="font-family: sans-serif; max-width: 640px; margin: 0 auto; color: #1a1a1a;">
@@ -180,6 +197,7 @@ export async function GET(request: NextRequest) {
   const [
     { data: taskDepsData }, { data: phaseDepsData },
     { data: collaborateursData }, { data: resourcesData }, { data: assignmentsData }, { data: unavailabilitiesData },
+    { data: collabUnavailabilitiesData },
   ] = await Promise.all([
     taskIds.length
       ? supabase.from('task_dependencies').select('*').in('predecessor_id', taskIds)
@@ -191,6 +209,7 @@ export async function GET(request: NextRequest) {
     supabase.from('resources').select('*'),
     supabase.from('resource_assignments').select('*').in('project_id', projectIds),
     supabase.from('resource_unavailability').select('*'),
+    supabase.from('collaborateur_unavailability').select('*'),
   ])
   const taskDeps = (taskDepsData ?? []) as TaskDependency[]
   const phaseDeps = (phaseDepsData ?? []) as PhaseDependency[]
@@ -198,6 +217,7 @@ export async function GET(request: NextRequest) {
   const resources = (resourcesData ?? []) as Resource[]
   const assignments = (assignmentsData ?? []) as ResourceAssignment[]
   const unavailabilities = (unavailabilitiesData ?? []) as ResourceUnavailability[]
+  const collabUnavailabilities = (collabUnavailabilitiesData ?? []) as CollaborateurUnavailability[]
 
   const feries = feriesCourants()
   const auj = toLocalISO(new Date())
@@ -209,12 +229,14 @@ export async function GET(request: NextRequest) {
     ...conflitsRessourcesModule(assignments, tasks, projects, resources),
   ]
   const conflitsIndispo = conflitsIndisponibilite(assignments, tasks, resources, unavailabilities, projects)
+  const conflitsIndispoCollab = conflitsIndisponibiliteCollaborateurs(tasks, projects, collaborateurs, collabUnavailabilities)
 
   const recapsRes = settings.surveillance_recap_ressources_auto === 'true'
     ? recapsRessources(resources, assignments, tasks, projects)
     : []
 
   const rienPourAdmin = parProjet.length === 0 && conflitsRessources.length === 0 && conflitsIndispo.length === 0
+    && conflitsIndispoCollab.length === 0
   if (rienPourAdmin && recapsRes.length === 0) {
     return NextResponse.json({ success: true, alertes: 0, projets_concernes: 0, recaps_envoyes: 0 })
   }
@@ -241,8 +263,10 @@ export async function GET(request: NextRequest) {
   }
 
   const totalAlertes = parProjet.reduce((s, a) => s + nbAlertes(a), 0) + conflitsRessources.length + conflitsIndispo.length
+    + conflitsIndispoCollab.length
   const sections = renderConflitsRessourcesHtml(conflitsRessources, origin)
     + renderConflitsIndisponibiliteHtml(conflitsIndispo, origin)
+    + renderConflitsIndisponibiliteCollaborateursHtml(conflitsIndispoCollab, origin)
     + parProjet.map((a) => renderProjetHtml(a, origin)).join('')
 
   const { error: mailErr } = await resend.emails.send({

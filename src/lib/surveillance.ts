@@ -1,7 +1,7 @@
 import type {
   Project, ProjectPhase, ProjectTask, ProjectMilestone, TaskDependency, PhaseDependency,
   Collaborateur, Resource, ResourceAssignment, ResourceUnavailability, ResourceUnavailabilityMotif,
-  ProjectTaskStatus,
+  CollaborateurUnavailability, ProjectTaskStatus,
 } from '@/lib/types'
 import { findDependencyConflicts } from '@/lib/gantt-deps'
 
@@ -281,6 +281,82 @@ export function conflitsIndisponibilite(
         tacheFin: task.date_fin,
       })
     }
+  }
+  return out
+}
+
+/**
+ * Période d'indisponibilité (congé, maladie...) chevauchant une plage de
+ * dates données, s'il y en a une — brique de base réutilisée à la fois par
+ * conflitsIndisponibiliteCollaborateurs ci-dessous (alerte multi-projets,
+ * email quotidien) et par l'avertissement immédiat affiché sur la fiche
+ * projet au moment d'assigner une tâche (TasksManager) : même logique de
+ * chevauchement, un seul endroit à faire évoluer.
+ */
+export function indisponibiliteChevauchante(
+  dateDebut: string,
+  dateFin: string,
+  unavailabilities: CollaborateurUnavailability[]
+): CollaborateurUnavailability | null {
+  return unavailabilities.find((u) => seChevauchent(dateDebut, dateFin, u.date_debut, u.date_fin)) ?? null
+}
+
+/**
+ * Un COLLABORATEUR (responsable_id sur project_tasks — l'assignation la
+ * plus courante, distincte des ResourceAssignment ci-dessus) responsable
+ * d'une tâche datée qui chevauche sa propre indisponibilité. Garde-fou
+ * volontairement non bloquant (voir TasksManager) : signalé, jamais empêché
+ * depuis l'interface — un collaborateur peut légitimement accepter de
+ * travailler pendant un congé.
+ */
+export interface ConflitIndisponibiliteCollaborateur {
+  collaborateurNom: string
+  motif: ResourceUnavailabilityMotif
+  indispoDebut: string
+  indispoFin: string
+  projetId: string
+  projetTitre: string
+  tacheId: string
+  tacheTitre: string
+  tacheDebut: string
+  tacheFin: string
+}
+
+export function conflitsIndisponibiliteCollaborateurs(
+  tasks: ProjectTask[],
+  projects: Project[],
+  collaborateurs: Collaborateur[],
+  unavailabilities: CollaborateurUnavailability[]
+): ConflitIndisponibiliteCollaborateur[] {
+  const projetById = new Map(projects.map((p) => [p.id, p]))
+  const collabById = new Map(collaborateurs.map((c) => [c.id, c]))
+  const indispoByCollab = new Map<string, CollaborateurUnavailability[]>()
+  for (const u of unavailabilities) {
+    if (!indispoByCollab.has(u.collaborateur_id)) indispoByCollab.set(u.collaborateur_id, [])
+    indispoByCollab.get(u.collaborateur_id)!.push(u)
+  }
+
+  const out: ConflitIndisponibiliteCollaborateur[] = []
+  for (const t of tasks) {
+    if (!t.responsable_id || !t.date_debut || !t.date_fin) continue
+    const indispos = indispoByCollab.get(t.responsable_id) ?? []
+    const u = indisponibiliteChevauchante(t.date_debut, t.date_fin, indispos)
+    if (!u) continue
+    const collab = collabById.get(t.responsable_id)
+    const projet = projetById.get(t.project_id)
+    if (!collab || !projet) continue
+    out.push({
+      collaborateurNom: collab.nom,
+      motif: u.motif,
+      indispoDebut: u.date_debut,
+      indispoFin: u.date_fin,
+      projetId: projet.id,
+      projetTitre: projet.titre,
+      tacheId: t.id,
+      tacheTitre: t.titre,
+      tacheDebut: t.date_debut,
+      tacheFin: t.date_fin,
+    })
   }
   return out
 }

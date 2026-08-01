@@ -1,18 +1,20 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { ProjectTask, ProjectPhase, Collaborateur, ProjectTaskStatus } from '@/lib/types'
+import type { ProjectTask, ProjectPhase, Collaborateur, ProjectTaskStatus, CollaborateurUnavailability } from '@/lib/types'
+import { indisponibiliteChevauchante } from '@/lib/surveillance'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Plus, Trash2, ListChecks, Repeat } from 'lucide-react'
+import { Plus, Trash2, ListChecks, Repeat, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import { TaskComments } from '@/components/planning/task-comments'
+import { MOTIF_LABEL } from '@/components/ressources/resource-calendar'
 
 const statutLabel: Record<ProjectTaskStatus, string> = {
   a_faire: 'À faire', en_cours: 'En cours', fait: 'Fait', bloque: 'Bloqué',
@@ -26,6 +28,10 @@ const statutStyle: Record<ProjectTaskStatus, string> = {
 
 const NONE = '__none__'
 
+function fmtCourt(iso: string): string {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
+}
+
 interface TasksManagerProps {
   projectId: string
   tasks: ProjectTask[]
@@ -35,9 +41,16 @@ interface TasksManagerProps {
   // d'afficher "Commentaires (n)" immédiatement, sans devoir dépiler chaque
   // tâche pour savoir si le collaborateur a laissé une explication.
   commentCounts?: Record<string, number>
+  // Calendrier de disponibilité des collaborateurs — garde-fou NON bloquant
+  // (voir indisponibiliteChevauchante) : avertit sans empêcher d'assigner
+  // une tâche à un collaborateur en congé/absence, un collaborateur pouvant
+  // légitimement accepter de travailler pendant cette période.
+  unavailabilities?: CollaborateurUnavailability[]
 }
 
-export function TasksManager({ projectId, tasks, phases, collaborateurs, commentCounts = {} }: TasksManagerProps) {
+export function TasksManager({
+  projectId, tasks, phases, collaborateurs, commentCounts = {}, unavailabilities = [],
+}: TasksManagerProps) {
   const router = useRouter()
   const supabase = createClient()
   const [titre, setTitre] = useState('')
@@ -64,6 +77,28 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs, comment
 
   const collabById = Object.fromEntries(collaborateurs.map((c) => [c.id, c]))
   const phaseById = Object.fromEntries(phases.map((p) => [p.id, p]))
+
+  const unavailabilitiesByCollaborateur = useMemo(() => {
+    const m = new Map<string, CollaborateurUnavailability[]>()
+    for (const u of unavailabilities) {
+      const arr = m.get(u.collaborateur_id)
+      if (arr) arr.push(u); else m.set(u.collaborateur_id, [u])
+    }
+    return m
+  }, [unavailabilities])
+
+  // Indisponibilité en cours pour chaque tâche déjà assignée — badge
+  // persistant sur la ligne (le toast d'avertissement dans update() n'est
+  // visible qu'au moment du changement, pas en revenant plus tard sur la page).
+  const indispoParTache = useMemo(() => {
+    const m = new Map<string, CollaborateurUnavailability>()
+    for (const t of tasks) {
+      if (!t.responsable_id || !t.date_debut || !t.date_fin) continue
+      const u = indisponibiliteChevauchante(t.date_debut, t.date_fin, unavailabilitiesByCollaborateur.get(t.responsable_id) ?? [])
+      if (u) m.set(t.id, u)
+    }
+    return m
+  }, [tasks, unavailabilitiesByCollaborateur])
 
   async function addTask(e: React.FormEvent) {
     e.preventDefault()
@@ -93,7 +128,29 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs, comment
     const { error } = await supabase.from('project_tasks').update({ [field]: value }).eq('id', id)
     if (error) { toast.error(error.message); return }
     if (field === 'avancement' && typeof value === 'number' && value > 0) await bumpProjetEnCours()
+    if (field === 'responsable_id' || field === 'date_debut' || field === 'date_fin') {
+      avertirSiIndisponible(id, field, value as string | null)
+    }
     router.refresh()
+  }
+
+  // Garde-fou non bloquant : avertit immédiatement (au lieu d'attendre
+  // l'email du lendemain, cf. conflitsIndisponibiliteCollaborateurs) si le
+  // responsable résultant est en congé/absence sur la période résultante de
+  // la tâche — sans jamais empêcher la sauvegarde déjà effectuée ci-dessus.
+  function avertirSiIndisponible(id: string, champModifie: string, nouvelleValeur: string | null) {
+    const t = tasks.find((x) => x.id === id)
+    if (!t) return
+    const responsableId = champModifie === 'responsable_id' ? nouvelleValeur : t.responsable_id
+    const debut = champModifie === 'date_debut' ? nouvelleValeur : t.date_debut
+    const fin = champModifie === 'date_fin' ? nouvelleValeur : t.date_fin
+    if (!responsableId || !debut || !fin) return
+    const conflit = indisponibiliteChevauchante(debut, fin, unavailabilitiesByCollaborateur.get(responsableId) ?? [])
+    if (!conflit) return
+    const nom = collabById[responsableId]?.nom ?? 'Ce collaborateur'
+    toast.warning(
+      `⚠ ${nom} est ${MOTIF_LABEL[conflit.motif].toLowerCase()} du ${fmtCourt(conflit.date_debut)} au ${fmtCourt(conflit.date_fin)} — tâche quand même assignée.`
+    )
   }
 
   // Marquer une tâche "Fait" doit aussi mettre son avancement à 100 % —
@@ -234,6 +291,15 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs, comment
                   </div>
                 </div>
               </div>
+              {indispoParTache.has(t.id) && (() => {
+                const conflit = indispoParTache.get(t.id)!
+                return (
+                  <p className="text-xs text-red-600 flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    {resp?.nom} est {MOTIF_LABEL[conflit.motif].toLowerCase()} du {fmtCourt(conflit.date_debut)} au {fmtCourt(conflit.date_fin)} — tâche quand même assignée
+                  </p>
+                )
+              })()}
               <div className="flex flex-wrap items-center gap-2">
                 {resp && (
                   <span className="flex items-center gap-1 text-xs text-gray-500">
