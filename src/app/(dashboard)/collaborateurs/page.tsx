@@ -11,6 +11,7 @@ export default async function CollaborateursPage() {
     { data: missions },
     { data: projects },
     { data: tasks },
+    { data: unavailabilities },
   ] = await Promise.all([
     supabase.from('collaborateurs').select('*').order('nom'),
     supabase.from('resources').select('*').order('nom'),
@@ -18,6 +19,7 @@ export default async function CollaborateursPage() {
     supabase.from('missions').select('id, titre, statut, responsable_id'),
     supabase.from('projects').select('id, titre, statut, responsable_id'),
     supabase.from('project_tasks').select('id, statut, responsable_id'),
+    supabase.from('collaborateur_unavailability').select('*'),
   ])
 
   return (
@@ -38,6 +40,7 @@ export default async function CollaborateursPage() {
         missions={missions ?? []}
         projects={projects ?? []}
         tasks={tasks ?? []}
+        unavailabilities={unavailabilities ?? []}
       />
     </div>
   )

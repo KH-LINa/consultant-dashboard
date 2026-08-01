@@ -243,6 +243,22 @@ export interface ResourceUnavailability {
   created_at: string
 }
 
+// Période où un COLLABORATEUR n'est pas disponible (congé, maladie...) —
+// distincte de ResourceUnavailability : un collaborateur non facturé (sans
+// resource_id lié) a quand même besoin d'un calendrier, même logique que
+// Collaborateur.cout_horaire déjà dupliqué pour cette raison. Même
+// vocabulaire de motif (voir MOTIF_LABEL/MOTIF_COLOR, resource-calendar.tsx,
+// réutilisé pour les deux calendriers).
+export interface CollaborateurUnavailability {
+  id: string
+  collaborateur_id: string
+  date_debut: string
+  date_fin: string
+  motif: ResourceUnavailabilityMotif
+  note: string | null
+  created_at: string
+}
+
 // Types de liens MS Project : FS = fin→début (défaut), SS = début→début,
 // FF = fin→fin, SF = début→fin. En français : FD / DD / FF / DF.
 export type DependencyType = 'FS' | 'SS' | 'FF' | 'SF'

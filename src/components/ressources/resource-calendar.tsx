@@ -1,10 +1,20 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import type { ResourceUnavailability, ResourceUnavailabilityMotif } from '@/lib/types'
+import type { ResourceUnavailabilityMotif } from '@/lib/types'
 import { estWeekend, feriesCourants } from '@/lib/jours-ouvres'
 import { toLocalISO } from '@/lib/gantt-deps'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+
+// Forme minimale partagée par ResourceUnavailability et
+// CollaborateurUnavailability — ce composant est réutilisé pour les deux
+// calendriers (module Ressources ET fiche Collaborateur), qui ont chacun
+// leur propre table mais le même vocabulaire de motif.
+interface UnavailabilityLike {
+  motif: ResourceUnavailabilityMotif
+  date_debut: string
+  date_fin: string
+}
 
 export const MOTIF_LABEL: Record<ResourceUnavailabilityMotif, string> = {
   absent: 'Absent', conge: 'Congé', maladie: 'Maladie', autre: 'Autre',
@@ -24,7 +34,7 @@ const JOURS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 export function ResourceCalendar({
   unavailabilities, filtres,
 }: {
-  unavailabilities: ResourceUnavailability[]
+  unavailabilities: UnavailabilityLike[]
   filtres: Set<ResourceUnavailabilityMotif>
 }) {
   const [cursor, setCursor] = useState(() => { const d = new Date(); d.setDate(1); return d })

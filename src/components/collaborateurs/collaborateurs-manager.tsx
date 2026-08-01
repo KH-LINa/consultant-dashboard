@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type {
   Collaborateur, Resource, ResourceAssignment, MissionStatus, ProjectStatus, ContratType,
+  CollaborateurUnavailability, ResourceUnavailabilityMotif,
 } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -15,11 +16,17 @@ import {
 } from '@/components/ui/select'
 import { AvatarCollaborateur } from '@/components/collaborateurs/avatar-collaborateur'
 import { CompetencesTags } from '@/components/collaborateurs/competences-tags'
-import { Plus, Trash2, Users, Link2, Unlink, StickyNote, Mail, Phone, CalendarClock } from 'lucide-react'
+import { ResourceCalendar, MOTIF_LABEL, MOTIF_COLOR } from '@/components/ressources/resource-calendar'
+import { Plus, Trash2, Users, Link2, Unlink, StickyNote, Mail, Phone, CalendarClock, CalendarDays } from 'lucide-react'
 import { toast } from 'sonner'
 
 const COULEURS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#64748b']
 const NONE = '__none__'
+const TOUS_MOTIFS = new Set<ResourceUnavailabilityMotif>(['absent', 'conge', 'maladie', 'autre'])
+
+function fmtCourt(iso: string): string {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
+}
 
 const TYPES_CONTRAT: ContratType[] = ['CDI', 'CDD', 'Freelance', 'Alternance', 'Stage']
 const CONTRAT_STYLE: Record<ContratType, string> = {
@@ -61,10 +68,11 @@ interface CollaborateursManagerProps {
   missions: MissionLite[]
   projects: ProjectLite[]
   tasks: TaskLite[]
+  unavailabilities: CollaborateurUnavailability[]
 }
 
 export function CollaborateursManager({
-  collaborateurs, resources, assignments, missions, projects, tasks,
+  collaborateurs, resources, assignments, missions, projects, tasks, unavailabilities,
 }: CollaborateursManagerProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -77,6 +85,16 @@ export function CollaborateursManager({
   const [adding, setAdding] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [notesOuvertes, setNotesOuvertes] = useState<string | null>(null)
+
+  // Calendrier de disponibilité (par collaborateur déplié) — même mécanique
+  // que le module Ressources (resource-calendar.tsx, réutilisé tel quel).
+  const [calendarFor, setCalendarFor] = useState<string | null>(null)
+  const [filtresMotif, setFiltresMotif] = useState<Set<ResourceUnavailabilityMotif>>(new Set(TOUS_MOTIFS))
+  const [indispDebut, setIndispDebut] = useState('')
+  const [indispFin, setIndispFin] = useState('')
+  const [indispMotif, setIndispMotif] = useState<ResourceUnavailabilityMotif>('absent')
+  const [indispNote, setIndispNote] = useState('')
+  const [addingIndisp, setAddingIndisp] = useState(false)
 
   const assignmentsByResource = useMemo(() => {
     const m = new Map<string, ResourceAssignment[]>()
@@ -133,6 +151,50 @@ export function CollaborateursManager({
     () => [...collaborateurs].sort((a, b) => Number(b.actif) - Number(a.actif)),
     [collaborateurs]
   )
+
+  const unavailabilitiesByCollaborateur = useMemo(() => {
+    const m = new Map<string, CollaborateurUnavailability[]>()
+    for (const u of unavailabilities) {
+      const arr = m.get(u.collaborateur_id)
+      if (arr) arr.push(u); else m.set(u.collaborateur_id, [u])
+    }
+    for (const arr of Array.from(m.values())) arr.sort((a, b) => b.date_debut.localeCompare(a.date_debut))
+    return m
+  }, [unavailabilities])
+
+  function toggleFiltreMotif(motif: ResourceUnavailabilityMotif) {
+    setFiltresMotif((prev) => {
+      const next = new Set(prev)
+      if (next.has(motif)) next.delete(motif); else next.add(motif)
+      return next
+    })
+  }
+
+  async function addUnavailability(collaborateurId: string) {
+    if (!indispDebut || !indispFin) { toast.error('Renseignez les dates de début et de fin'); return }
+    if (indispFin < indispDebut) { toast.error('La date de fin doit être après le début'); return }
+    setAddingIndisp(true)
+    const { error } = await supabase.from('collaborateur_unavailability').insert({
+      collaborateur_id: collaborateurId,
+      date_debut: indispDebut,
+      date_fin: indispFin,
+      motif: indispMotif,
+      note: indispNote.trim() || null,
+    })
+    setAddingIndisp(false)
+    if (error) toast.error(error.message)
+    else {
+      toast.success('Période ajoutée au calendrier')
+      setIndispDebut(''); setIndispFin(''); setIndispMotif('absent'); setIndispNote('')
+      router.refresh()
+    }
+  }
+
+  async function removeUnavailability(id: string) {
+    const { error } = await supabase.from('collaborateur_unavailability').delete().eq('id', id)
+    if (error) toast.error(error.message)
+    else { toast.success('Période supprimée'); router.refresh() }
+  }
 
   async function addCollaborateur(e: React.FormEvent) {
     e.preventDefault()
@@ -305,12 +367,108 @@ export function CollaborateursManager({
                   >
                     <StickyNote className="h-3.5 w-3.5" />
                   </button>
+                  <button
+                    onClick={() => setCalendarFor(calendarFor === c.id ? null : c.id)}
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-[#534AB7]"
+                    title="Calendrier de disponibilité (congés, arrêts maladie…)"
+                  >
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    {(unavailabilitiesByCollaborateur.get(c.id) ?? []).length > 0 && (
+                      <span>({(unavailabilitiesByCollaborateur.get(c.id) ?? []).length})</span>
+                    )}
+                  </button>
                 </div>
                 {notesOuvertes === c.id && (
                   <Input className="h-8 text-xs w-full" placeholder="Spécialité, disponibilité, remarque…"
                     defaultValue={c.notes ?? ''}
                     onBlur={(e) => e.target.value.trim() !== (c.notes ?? '') && update(c.id, 'notes', e.target.value.trim() || null)} />
                 )}
+
+                {/* Calendrier de disponibilité — congés, arrêts maladie, absences */}
+                {calendarFor === c.id && (() => {
+                  const indisps = unavailabilitiesByCollaborateur.get(c.id) ?? []
+                  const indispsFiltrees = indisps.filter((u) => filtresMotif.has(u.motif))
+                  return (
+                    <div className="pt-2 border-t space-y-3">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {(Object.keys(MOTIF_LABEL) as ResourceUnavailabilityMotif[]).map((m) => {
+                          const actif = filtresMotif.has(m)
+                          return (
+                            <button
+                              key={m}
+                              onClick={() => toggleFiltreMotif(m)}
+                              className="text-[11px] px-2 py-0.5 rounded-full border transition-opacity"
+                              style={{
+                                background: actif ? MOTIF_COLOR[m] : 'transparent',
+                                color: actif ? '#fff' : MOTIF_COLOR[m],
+                                borderColor: MOTIF_COLOR[m],
+                                opacity: actif ? 1 : 0.6,
+                              }}
+                            >
+                              {MOTIF_LABEL[m]}
+                            </button>
+                          )
+                        })}
+                      </div>
+
+                      <div className="flex items-start gap-4 flex-wrap">
+                        <ResourceCalendar unavailabilities={indisps} filtres={filtresMotif} />
+
+                        <div className="flex-1 min-w-[220px] space-y-2">
+                          <div className="flex items-end gap-2 flex-wrap">
+                            <div className="w-32">
+                              <label className="text-xs text-gray-500">Début</label>
+                              <Input type="date" className="h-8 text-xs" value={indispDebut}
+                                onChange={(e) => setIndispDebut(e.target.value)} />
+                            </div>
+                            <div className="w-32">
+                              <label className="text-xs text-gray-500">Fin</label>
+                              <Input type="date" className="h-8 text-xs" value={indispFin}
+                                onChange={(e) => setIndispFin(e.target.value)} />
+                            </div>
+                            <div className="w-28">
+                              <label className="text-xs text-gray-500">Motif</label>
+                              <Select value={indispMotif} onValueChange={(v) => setIndispMotif((v as ResourceUnavailabilityMotif) ?? 'absent')}>
+                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  {(Object.keys(MOTIF_LABEL) as ResourceUnavailabilityMotif[]).map((m) => (
+                                    <SelectItem key={m} value={m}>{MOTIF_LABEL[m]}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <Button size="sm" className="h-8" disabled={addingIndisp} onClick={() => addUnavailability(c.id)}>
+                              Ajouter
+                            </Button>
+                          </div>
+                          <Input value={indispNote} onChange={(e) => setIndispNote(e.target.value)}
+                            placeholder="Note (optionnel)" className="h-8 text-xs max-w-xs" />
+
+                          {indispsFiltrees.length > 0 ? (
+                            <div className="space-y-1 pt-1">
+                              {indispsFiltrees.map((u) => (
+                                <div key={u.id} className="flex items-center gap-2 text-xs text-gray-600 group/indisp">
+                                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: MOTIF_COLOR[u.motif] }} />
+                                  <span className="font-medium" style={{ color: MOTIF_COLOR[u.motif] }}>{MOTIF_LABEL[u.motif]}</span>
+                                  <span>{fmtCourt(u.date_debut)} → {fmtCourt(u.date_fin)}</span>
+                                  {u.note && <span className="text-gray-400 truncate">— {u.note}</span>}
+                                  <Button variant="ghost" size="sm" onClick={() => removeUnavailability(u.id)}
+                                    className="ml-auto h-5 w-5 p-0 text-red-400 hover:text-red-600 opacity-0 group-hover/indisp:opacity-100">
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-400 pt-1">
+                              {indisps.length === 0 ? 'Aucune période renseignée.' : 'Aucune période pour les motifs sélectionnés.'}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* Coût + lien vers une ressource facturable */}
                 <div className="flex items-center gap-2 flex-wrap pt-2 border-t text-xs">
