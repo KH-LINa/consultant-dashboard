@@ -186,7 +186,7 @@ export function ProjectGantt({
     mq.addEventListener('change', onChange)
     return () => mq.removeEventListener('change', onChange)
   }, [])
-  const listColWidths = isMobile ? { name: 96, dur: 0, from: 0, to: 0 } : colWidths
+  const listColWidths = isMobile ? { name: 130, dur: 0, from: 0, to: 0 } : colWidths
   const listWidthPx = listColWidths.name + listColWidths.dur + listColWidths.from + listColWidths.to
 
   // Conteneur du Gantt — utilisé pour recolorer après coup les flèches de
@@ -524,6 +524,73 @@ export function ProjectGantt({
     observer.observe(container, { childList: true, subtree: true })
     return () => observer.disconnect()
   }, [ganttTasks])
+
+  // Pont tactile pour le défilement horizontal du graphique : gantt-task-react
+  // ne route le défilement du graphique QUE via un listener natif 'wheel' sur
+  // son conteneur interne — aucune prise en charge tactile (vérifié sur
+  // appareil réel : un balayage sur le graphique ou sur sa mini barre de
+  // défilement interne ne produit aucun effet, seule une vraie molette
+  // fonctionne). On traduit donc le geste tactile horizontal en évènements
+  // 'wheel' synthétiques envoyés au bon élément — identifié par sa
+  // STRUCTURE (parent direct du conteneur SVG du graphique) plutôt que par
+  // une classe CSS hachée, donc pas de risque de casse au changement de
+  // version de la lib (même précaution que la coloration des flèches
+  // ci-dessus). Un balayage vertical n'est pas intercepté : la page doit
+  // rester défilable normalement.
+  useEffect(() => {
+    if (!isMobile) return
+    const outer = ganttWrapperRef.current
+    if (!outer) return
+
+    function trouverCibleMolette(): HTMLElement | null {
+      const divs = outer!.querySelectorAll('div')
+      for (const el of Array.from(divs)) {
+        const premier = el.firstElementChild
+        if (premier && premier.tagName.toLowerCase() === 'svg' && getComputedStyle(el).overflowX === 'hidden') {
+          return el.parentElement as HTMLElement | null
+        }
+      }
+      return null
+    }
+
+    let depX = 0
+    let depY = 0
+    let dernierX = 0
+    let horizontal: boolean | null = null
+    let cible: HTMLElement | null = null
+
+    function onTouchStart(e: TouchEvent) {
+      if (e.touches.length !== 1) return
+      depX = dernierX = e.touches[0].clientX
+      depY = e.touches[0].clientY
+      horizontal = null
+      cible = trouverCibleMolette()
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      if (e.touches.length !== 1 || !cible) return
+      const x = e.touches[0].clientX
+      const y = e.touches[0].clientY
+      if (horizontal === null) {
+        const dx = Math.abs(x - depX)
+        const dy = Math.abs(y - depY)
+        if (dx < 6 && dy < 6) return
+        horizontal = dx > dy
+      }
+      if (!horizontal) return
+      e.preventDefault()
+      const deltaX = dernierX - x
+      dernierX = x
+      cible.dispatchEvent(new WheelEvent('wheel', { deltaX, deltaY: 0, bubbles: true, cancelable: true }))
+    }
+
+    outer.addEventListener('touchstart', onTouchStart, { passive: true })
+    outer.addEventListener('touchmove', onTouchMove, { passive: false })
+    return () => {
+      outer.removeEventListener('touchstart', onTouchStart)
+      outer.removeEventListener('touchmove', onTouchMove)
+    }
+  }, [isMobile])
 
   // Numérotation hiérarchique WBS (1, 1.1, 1.1.1…) façon MS Project, déduite
   // de l'ordre d'affichage et du champ project (parent) de chaque ligne.
