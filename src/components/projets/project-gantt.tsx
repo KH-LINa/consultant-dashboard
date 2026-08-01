@@ -505,6 +505,28 @@ export function ProjectGantt({
     return () => observer.disconnect()
   }, [ganttTasks])
 
+  // Sur mobile, la liste de tâches (colonnes Tâche/Durée/Début/Fin, ~470px
+  // par défaut) occupe déjà à elle seule tout l'écran — la partie visuelle
+  // du planning (les barres) reste hors champ tant qu'on n'a pas fait défiler
+  // manuellement, ce qui la rend quasi invisible/indécouvrable en pratique.
+  // On défile donc automatiquement jusqu'au début du graphique dès que la
+  // vue Gantt s'affiche sur un écran étroit, pour que ce soit ce qui se voit
+  // en premier — inchangé sur desktop, où la liste ET le début du graphique
+  // tiennent déjà dans la largeur visible.
+  useEffect(() => {
+    if (view !== 'gantt' || ganttTasks.length === 0) return
+    if (window.innerWidth > 768) return
+    const listWidth = colWidths.name + colWidths.dur + colWidths.from + colWidths.to
+    const id = requestAnimationFrame(() => {
+      ganttWrapperRef.current?.scrollTo({ left: listWidth })
+    })
+    return () => cancelAnimationFrame(id)
+    // Volontairement limité à `view` : ne doit se déclencher qu'à l'entrée
+    // sur l'onglet Gantt (pas à chaque redimensionnement de colonne ou
+    // changement de tâches, ce qui réinitialiserait le scroll de l'utilisateur).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view])
+
   // Numérotation hiérarchique WBS (1, 1.1, 1.1.1…) façon MS Project, déduite
   // de l'ordre d'affichage et du champ project (parent) de chaque ligne.
   // La ligne récapitulative du projet n'est pas numérotée.
