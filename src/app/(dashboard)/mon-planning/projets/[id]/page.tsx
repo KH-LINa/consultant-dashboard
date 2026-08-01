@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { phaseStatus, projectCompletionRate } from '@/lib/gantt-deps'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ScrollToTache } from '@/components/planning/scroll-to-tache'
 import { ArrowLeft, Flag, Link2 } from 'lucide-react'
 import type {
   ProjectStatus, ProjectTaskStatus, MilestoneStatus, DependencyType,
@@ -85,6 +86,7 @@ export default async function ProjetLectureSeulePage({ params }: { params: { id:
 
   return (
     <div className="space-y-6 max-w-4xl">
+      <ScrollToTache />
       <div>
         <Link href="/mon-planning" className="text-sm text-gray-400 hover:text-gray-600 flex items-center gap-1 mb-2">
           <ArrowLeft className="h-3.5 w-3.5" />
@@ -129,7 +131,7 @@ export default async function ProjetLectureSeulePage({ params }: { params: { id:
             <CardContent className="space-y-1.5">
               {tachesPhase.length === 0 && <p className="text-xs text-gray-400">Aucune tâche.</p>}
               {tachesPhase.map((t) => (
-                <div key={t.id} className="border rounded-lg p-2.5 flex items-center gap-3 text-sm">
+                <div key={t.id} id={`tache-${t.id}`} className="border rounded-lg p-2.5 flex items-center gap-3 text-sm transition-colors">
                   <span className="flex-1 min-w-0 truncate">{t.titre}</span>
                   {t.responsable_id && collabById[t.responsable_id] && (
                     <span className="text-xs text-gray-400 whitespace-nowrap flex items-center gap-1">
@@ -154,7 +156,7 @@ export default async function ProjetLectureSeulePage({ params }: { params: { id:
           </CardHeader>
           <CardContent className="space-y-1.5">
             {(tasksParPhase.get(null) ?? []).map((t) => (
-              <div key={t.id} className="border rounded-lg p-2.5 flex items-center gap-3 text-sm">
+              <div key={t.id} id={`tache-${t.id}`} className="border rounded-lg p-2.5 flex items-center gap-3 text-sm transition-colors">
                 <span className="flex-1 min-w-0 truncate">{t.titre}</span>
                 {t.responsable_id && collabById[t.responsable_id] && (
                   <span className="text-xs text-gray-400 whitespace-nowrap">{collabById[t.responsable_id].nom}</span>

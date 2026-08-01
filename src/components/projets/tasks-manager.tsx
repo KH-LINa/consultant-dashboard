@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { ProjectTask, ProjectPhase, Collaborateur, ProjectTaskStatus } from '@/lib/types'
@@ -42,6 +42,25 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs, comment
   const supabase = createClient()
   const [titre, setTitre] = useState('')
   const [adding, setAdding] = useState(false)
+
+  // Arrivée depuis un lien "?tache=<id>" (notification de retard par email
+  // ou page Notifications) : centre la vue sur la tâche visée et déplie
+  // directement son fil de commentaires (voir TaskComments defaultOpen).
+  // Lu depuis window.location plutôt que useSearchParams pour ne pas
+  // imposer de limite de Suspense sur la page projet (même convention que
+  // (auth)/login/page.tsx).
+  const [tacheActive, setTacheActive] = useState<string | null>(null)
+  const [surligner, setSurligner] = useState(false)
+
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('tache')
+    if (!id) return
+    setTacheActive(id)
+    setSurligner(true)
+    document.getElementById(`tache-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const timer = setTimeout(() => setSurligner(false), 4000)
+    return () => clearTimeout(timer)
+  }, [])
 
   const collabById = Object.fromEntries(collaborateurs.map((c) => [c.id, c]))
   const phaseById = Object.fromEntries(phases.map((p) => [p.id, p]))
@@ -136,7 +155,10 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs, comment
         {tasksTriees.map((t) => {
           const resp = t.responsable_id ? collabById[t.responsable_id] : null
           return (
-            <div key={t.id} className="border rounded-lg p-3 space-y-2 group">
+            <div key={t.id} id={`tache-${t.id}`}
+              className={`border rounded-lg p-3 space-y-2 group transition-colors ${
+                surligner && t.id === tacheActive ? 'ring-2 ring-amber-400 bg-amber-50/60' : ''
+              }`}>
               <div className="flex items-center gap-2">
                 <Input className="h-8 flex-1 font-medium" defaultValue={t.titre}
                   onBlur={(e) => e.target.value !== t.titre && update(t.id, 'titre', e.target.value)} />
@@ -239,7 +261,7 @@ export function TasksManager({ projectId, tasks, phases, collaborateurs, comment
                   <span className="text-xs text-gray-400">%</span>
                 </div>
               </div>
-              <TaskComments taskId={t.id} initialCount={commentCounts[t.id] ?? 0} />
+              <TaskComments taskId={t.id} initialCount={commentCounts[t.id] ?? 0} defaultOpen={t.id === tacheActive} />
             </div>
           )
         })}

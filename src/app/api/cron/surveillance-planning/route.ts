@@ -54,7 +54,7 @@ function renderProjetHtml(a: AlerteProjet, origin: string): string {
       ${tachesEnRetard.length ? `
         <p style="margin:8px 0 4px; font-size:13px; font-weight:600; color:#b91c1c;">⚠ Tâches en retard</p>
         <ul style="margin:0 0 8px; padding-left:20px; font-size:13px; color:#374151;">
-          ${tachesEnRetard.map((t) => `<li>${esc(t.titre)} — ${t.joursRetard} j de retard (échéance ${fmt(t.date_fin!)})</li>`).join('')}
+          ${tachesEnRetard.map((t) => `<li><a href="${origin}/projets/${projet.id}?tache=${t.id}" style="color:#b91c1c; text-decoration:underline;">${esc(t.titre)}</a> — ${t.joursRetard} j de retard (échéance ${fmt(t.date_fin!)})</li>`).join('')}
         </ul>` : ''}
       ${jalonsEnRetard.length ? `
         <p style="margin:8px 0 4px; font-size:13px; font-weight:600; color:#b91c1c;">⚠ Jalons en retard</p>

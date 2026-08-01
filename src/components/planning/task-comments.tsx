@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { TaskComment } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -17,26 +17,36 @@ function fmtDateHeure(iso: string): string {
 // fetch tant que l'utilisateur ne déplie pas), mais initialCount (compté en
 // amont côté serveur) permet d'afficher le nombre de commentaires dès le
 // chargement de la page, sans avoir à dépiler chaque tâche pour le savoir.
-export function TaskComments({ taskId, initialCount = 0 }: { taskId: string; initialCount?: number }) {
+// defaultOpen (arrivée depuis un lien de notification de retard, cf.
+// TasksManager) déplie et charge directement le fil, pour voir tout de
+// suite ce qui pose problème sans un clic de plus.
+export function TaskComments({ taskId, initialCount = 0, defaultOpen = false }: { taskId: string; initialCount?: number; defaultOpen?: boolean }) {
   const supabase = createClient()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
   const [loading, setLoading] = useState(false)
   const [comments, setComments] = useState<TaskComment[] | null>(null)
   const [texte, setTexte] = useState('')
   const [sending, setSending] = useState(false)
   const count = comments ? comments.length : initialCount
 
+  async function charger() {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('task_comments').select('*').eq('task_id', taskId).order('created_at', { ascending: true })
+    if (error) toast.error(error.message)
+    else setComments((data ?? []) as TaskComment[])
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    if (defaultOpen) charger()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   async function toggle() {
     if (open) { setOpen(false); return }
     setOpen(true)
-    if (comments === null) {
-      setLoading(true)
-      const { data, error } = await supabase
-        .from('task_comments').select('*').eq('task_id', taskId).order('created_at', { ascending: true })
-      if (error) toast.error(error.message)
-      else setComments((data ?? []) as TaskComment[])
-      setLoading(false)
-    }
+    if (comments === null) await charger()
   }
 
   async function envoyer() {

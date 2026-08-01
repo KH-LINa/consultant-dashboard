@@ -19,9 +19,16 @@ export default async function NotificationsPage() {
   if (!user) redirect('/login')
 
   const [{ data: profile }, { data: eventsData }] = await Promise.all([
-    supabase.from('profiles').select('nom, collaborateur_id').eq('id', user.id).single(),
+    supabase.from('profiles').select('nom, role, collaborateur_id').eq('id', user.id).single(),
     supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(30),
   ])
+
+  // Un admin/manager peut modifier la tâche directement sur la fiche projet ;
+  // un collaborateur n'a accès qu'à la vue lecture seule de "Mon planning".
+  const projetTacheHref = (projectId: string, taskId: string) =>
+    profile?.role === 'collaborateur'
+      ? `/mon-planning/projets/${projectId}?tache=${taskId}`
+      : `/projets/${projectId}?tache=${taskId}`
 
   // Tâches assignées à ce collaborateur (via la RLS, il ne voit que les siennes).
   const { data: tasksData } = profile?.collaborateur_id
@@ -75,13 +82,14 @@ export default async function NotificationsPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             {enRetard.map((t) => (
-              <div key={t.id} className="border border-red-100 bg-red-50/40 rounded-lg p-3 flex items-center justify-between gap-2">
+              <Link key={t.id} href={projetTacheHref(t.project_id, t.id)}
+                className="border border-red-100 bg-red-50/40 rounded-lg p-3 flex items-center justify-between gap-2 hover:bg-red-50 transition-colors">
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">{t.titre}</p>
                   {t.project?.titre && <p className="text-xs text-gray-400 truncate">{t.project.titre}</p>}
                 </div>
                 <span className="text-xs text-red-600 font-medium whitespace-nowrap">échéance {fmt(t.date_fin)}</span>
-              </div>
+              </Link>
             ))}
           </CardContent>
         </Card>
@@ -97,13 +105,14 @@ export default async function NotificationsPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             {echeanceProche.map((t) => (
-              <div key={t.id} className="border rounded-lg p-3 flex items-center justify-between gap-2">
+              <Link key={t.id} href={projetTacheHref(t.project_id, t.id)}
+                className="border rounded-lg p-3 flex items-center justify-between gap-2 hover:bg-gray-50 transition-colors">
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">{t.titre}</p>
                   {t.project?.titre && <p className="text-xs text-gray-400 truncate">{t.project.titre}</p>}
                 </div>
                 <span className="text-xs text-amber-600 whitespace-nowrap">échéance {fmt(t.date_fin)}</span>
-              </div>
+              </Link>
             ))}
           </CardContent>
         </Card>
