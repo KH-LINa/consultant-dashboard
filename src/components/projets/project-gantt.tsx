@@ -169,6 +169,26 @@ export function ProjectGantt({
   // Colonnes de la liste (Tâche / Début / Fin) redimensionnables par glisser
   const { widths: colWidths, startResize } = useResizableColumns()
 
+  // La liste et le graphique du Gantt se partagent la MÊME largeur totale
+  // (gantt-task-react calcule svgContainerWidth = largeur disponible − largeur
+  // réelle de la liste, mesurée sur nos colonnes) : sur un écran étroit, les
+  // ~470px par défaut de la liste (Tâche/Durée/Début/Fin) ne laissent
+  // quasiment aucune place au graphique — la partie visuelle (les barres),
+  // qui est l'information utile, devient minuscule voire invisible. On
+  // réduit donc la liste à la seule colonne Tâche sur mobile (durée/dates
+  // restent consultables via l'infobulle au clic sur une barre), sans
+  // toucher aux largeurs persistées (colWidths) utilisées sur desktop.
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)')
+    setIsMobile(mq.matches)
+    const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  const listColWidths = isMobile ? { name: 96, dur: 0, from: 0, to: 0 } : colWidths
+  const listWidthPx = listColWidths.name + listColWidths.dur + listColWidths.from + listColWidths.to
+
   // Conteneur du Gantt — utilisé pour recolorer après coup les flèches de
   // dépendances ENTRE PHASES (voir l'effet plus bas : gantt-task-react
   // n'expose qu'une seule couleur pour toutes les flèches, arrowColor).
@@ -504,28 +524,6 @@ export function ProjectGantt({
     observer.observe(container, { childList: true, subtree: true })
     return () => observer.disconnect()
   }, [ganttTasks])
-
-  // Sur mobile, la liste de tâches (colonnes Tâche/Durée/Début/Fin, ~470px
-  // par défaut) occupe déjà à elle seule tout l'écran — la partie visuelle
-  // du planning (les barres) reste hors champ tant qu'on n'a pas fait défiler
-  // manuellement, ce qui la rend quasi invisible/indécouvrable en pratique.
-  // On défile donc automatiquement jusqu'au début du graphique dès que la
-  // vue Gantt s'affiche sur un écran étroit, pour que ce soit ce qui se voit
-  // en premier — inchangé sur desktop, où la liste ET le début du graphique
-  // tiennent déjà dans la largeur visible.
-  useEffect(() => {
-    if (view !== 'gantt' || ganttTasks.length === 0) return
-    if (window.innerWidth > 768) return
-    const listWidth = colWidths.name + colWidths.dur + colWidths.from + colWidths.to
-    const id = requestAnimationFrame(() => {
-      ganttWrapperRef.current?.scrollTo({ left: listWidth })
-    })
-    return () => cancelAnimationFrame(id)
-    // Volontairement limité à `view` : ne doit se déclencher qu'à l'entrée
-    // sur l'onglet Gantt (pas à chaque redimensionnement de colonne ou
-    // changement de tâches, ce qui réinitialiserait le scroll de l'utilisateur).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view])
 
   // Numérotation hiérarchique WBS (1, 1.1, 1.1.1…) façon MS Project, déduite
   // de l'ordre d'affichage et du champ project (parent) de chaque ligne.
@@ -1043,10 +1041,10 @@ export function ProjectGantt({
 
   const { Header: TaskListHeader, Table: TaskListTable } = useMemo(
     () => createTaskListComponents(
-      colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, handleSupprimerTache,
+      listColWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, handleSupprimerTache,
       handleEditDate, wbsDe, feries, peutReordonner, handleReorder
     ),
-    [colWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, handleSupprimerTache,
+    [listColWidths, startResize, titreReel, handleRename, handleAjouterTache, handleFractionner, handleSupprimerTache,
       handleEditDate, wbsDe, feries, peutReordonner, handleReorder]
   )
 
@@ -1595,7 +1593,7 @@ export function ProjectGantt({
                   TaskListHeader={TaskListHeader}
                   TaskListTable={TaskListTable}
                   TooltipContent={TooltipContent}
-                  listCellWidth="220px"
+                  listCellWidth={`${listWidthPx}px`}
                   columnWidth={columnWidth}
                   barCornerRadius={4}
                   todayColor="rgba(245,158,11,0.20)"
@@ -1608,7 +1606,7 @@ export function ProjectGantt({
                 {ligneAujourdhui !== null && (
                   <div
                     className="absolute top-0 z-10 w-0.5 -translate-x-1/2 bg-amber-500 pointer-events-none"
-                    style={{ left: 220 + ligneAujourdhui + columnWidth / 2, height: hauteurGantt }}
+                    style={{ left: listWidthPx + ligneAujourdhui + columnWidth / 2, height: hauteurGantt }}
                     title="Aujourd'hui"
                   />
                 )}

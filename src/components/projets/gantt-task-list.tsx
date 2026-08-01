@@ -142,7 +142,10 @@ export function createTaskListComponents(
   const Header: React.FC<{ headerHeight: number; fontFamily: string; fontSize: string }> =
     ({ headerHeight, fontFamily, fontSize }) => (
       <div style={{ fontFamily, fontSize, height: headerHeight }} className="flex border-b border-gray-200 bg-gray-50/60">
-        {COLS.map(({ key, label }) => (
+        {/* widths[key] === 0 (mode mobile compact) : colonne omise plutôt que
+            réduite à 0 — avec le padding horizontal (px-3), un simple
+            width:0 ne descend jamais sous ~24px (plancher du border-box). */}
+        {COLS.filter(({ key }) => widths[key] > 0).map(({ key, label }) => (
           <div key={key} style={{ width: widths[key], minWidth: widths[key] }}
             className="relative flex items-center px-3 font-medium text-gray-600">
             <span className="truncate">{label}</span>
@@ -260,46 +263,52 @@ export function createTaskListComponents(
               </button>
             )}
           </div>
-          <div style={{ width: widths.dur, minWidth: widths.dur }} title="Jours ouvrés (week-ends et fériés exclus)"
-            className="px-3 truncate text-gray-500 tabular-nums">
-            {fmtDuree(t, feries)}
-          </div>
-          <div style={{ width: widths.from, minWidth: widths.from }} className="px-1 overflow-hidden">
-            {t.id === 'projet_global' ? (
-              <span className="px-2 truncate text-gray-500 block">{fmtDate(t.start)}</span>
-            ) : (
-              <input
-                type="date"
-                key={`db-${t.id}-${toInputDate(t.start)}`}
-                defaultValue={toInputDate(t.start)}
-                onMouseDown={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  if (!onEditDate(t.id, 'debut', e.target.value)) e.target.value = toInputDate(t.start)
-                }}
-                className="w-full bg-transparent border border-transparent outline-none rounded px-1.5 py-0.5 text-gray-500 cursor-pointer hover:border-gray-300 focus:border-[#534AB7] focus:ring-1 focus:ring-[#534AB7] focus:bg-white"
-              />
-            )}
-          </div>
-          <div style={{ width: widths.to, minWidth: widths.to }} className="px-1 overflow-hidden">
-            {t.id === 'projet_global' ? (
-              <span className="px-2 truncate text-gray-500 block">{fmtDate(t.end)}</span>
-            ) : (
-              <input
-                type="date"
-                key={`df-${t.id}-${toInputDate(t.end)}`}
-                defaultValue={toInputDate(t.end)}
-                onMouseDown={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  if (!onEditDate(t.id, 'fin', e.target.value)) e.target.value = toInputDate(t.end)
-                }}
-                className="w-full bg-transparent border border-transparent outline-none rounded px-1.5 py-0.5 text-gray-500 cursor-pointer hover:border-gray-300 focus:border-[#534AB7] focus:ring-1 focus:ring-[#534AB7] focus:bg-white"
-              />
-            )}
-          </div>
+          {widths.dur > 0 && (
+            <div style={{ width: widths.dur, minWidth: widths.dur }} title="Jours ouvrés (week-ends et fériés exclus)"
+              className="px-3 truncate text-gray-500 tabular-nums">
+              {fmtDuree(t, feries)}
+            </div>
+          )}
+          {widths.from > 0 && (
+            <div style={{ width: widths.from, minWidth: widths.from }} className="px-1 overflow-hidden">
+              {t.id === 'projet_global' ? (
+                <span className="px-2 truncate text-gray-500 block">{fmtDate(t.start)}</span>
+              ) : (
+                <input
+                  type="date"
+                  key={`db-${t.id}-${toInputDate(t.start)}`}
+                  defaultValue={toInputDate(t.start)}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  onChange={(e) => {
+                    if (!e.target.value) return
+                    if (!onEditDate(t.id, 'debut', e.target.value)) e.target.value = toInputDate(t.start)
+                  }}
+                  className="w-full bg-transparent border border-transparent outline-none rounded px-1.5 py-0.5 text-gray-500 cursor-pointer hover:border-gray-300 focus:border-[#534AB7] focus:ring-1 focus:ring-[#534AB7] focus:bg-white"
+                />
+              )}
+            </div>
+          )}
+          {widths.to > 0 && (
+            <div style={{ width: widths.to, minWidth: widths.to }} className="px-1 overflow-hidden">
+              {t.id === 'projet_global' ? (
+                <span className="px-2 truncate text-gray-500 block">{fmtDate(t.end)}</span>
+              ) : (
+                <input
+                  type="date"
+                  key={`df-${t.id}-${toInputDate(t.end)}`}
+                  defaultValue={toInputDate(t.end)}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  onChange={(e) => {
+                    if (!e.target.value) return
+                    if (!onEditDate(t.id, 'fin', e.target.value)) e.target.value = toInputDate(t.end)
+                  }}
+                  className="w-full bg-transparent border border-transparent outline-none rounded px-1.5 py-0.5 text-gray-500 cursor-pointer hover:border-gray-300 focus:border-[#534AB7] focus:ring-1 focus:ring-[#534AB7] focus:bg-white"
+                />
+              )}
+            </div>
+          )}
         </div>
         )
       })}
