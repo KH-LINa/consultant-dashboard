@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   alertesProjet, alertesTousProjets, nbAlertes, conflitsCollaborateurs, conflitsRessourcesModule,
-  conflitsIndisponibilite, conflitsIndisponibiliteCollaborateurs, indisponibiliteChevauchante, recapsRessources,
+  conflitsIndisponibilite, conflitsIndisponibiliteCollaborateurs, conflitsIndisponibiliteJalons,
+  indisponibiliteChevauchante, recapsRessources,
 } from './surveillance'
 import { feriesSet } from './jours-ouvres'
 import type {
@@ -29,9 +30,13 @@ function tache(
 }
 
 function jalon(
-  id: string, dateEcheance: string | null, statut: ProjectMilestone['statut'] = 'a_faire', projectId = 'p1'
+  id: string, dateEcheance: string | null, statut: ProjectMilestone['statut'] = 'a_faire', projectId = 'p1',
+  responsableId: string | null = null
 ): ProjectMilestone {
-  return { id, project_id: projectId, titre: id, date_echeance: dateEcheance, statut, livrable: null, ordre: 0, created_at: '' }
+  return {
+    id, project_id: projectId, titre: id, date_echeance: dateEcheance, statut, livrable: null, ordre: 0,
+    created_at: '', responsable_id: responsableId,
+  }
 }
 
 function phase(id: string, debut: string, fin: string, projectId = 'p1'): ProjectPhase {
@@ -409,6 +414,38 @@ describe('conflitsIndisponibiliteCollaborateurs', () => {
     const collaborateurs = [collaborateur('c1', 'Madjid')]
     const indispos = [indisponibiliteCollab('u1', 'c1', '2026-07-01', '2026-12-31', 'conge')]
     expect(conflitsIndisponibiliteCollaborateurs(tasks, projects, collaborateurs, indispos)).toHaveLength(0)
+  })
+})
+
+describe('conflitsIndisponibiliteJalons', () => {
+  it('détecte un jalon dont l\'échéance tombe pendant le congé de son responsable', () => {
+    const projects = [projet('p1')]
+    const milestones = [jalon('m1', '2026-07-25', 'a_faire', 'p1', 'c1')]
+    const collaborateurs = [collaborateur('c1', 'Madjid')]
+    const indispos = [indisponibiliteCollab('u1', 'c1', '2026-07-20', '2026-07-26', 'conge')]
+    const conflits = conflitsIndisponibiliteJalons(milestones, projects, collaborateurs, indispos)
+    expect(conflits).toHaveLength(1)
+    expect(conflits[0].collaborateurNom).toBe('Madjid')
+    expect(conflits[0].jalonTitre).toBe('m1')
+  })
+
+  it('pas de conflit si l\'échéance ne tombe pas dans la période', () => {
+    const projects = [projet('p1')]
+    const milestones = [jalon('m1', '2026-08-10', 'a_faire', 'p1', 'c1')]
+    const collaborateurs = [collaborateur('c1', 'Madjid')]
+    const indispos = [indisponibiliteCollab('u1', 'c1', '2026-07-20', '2026-07-26', 'conge')]
+    expect(conflitsIndisponibiliteJalons(milestones, projects, collaborateurs, indispos)).toHaveLength(0)
+  })
+
+  it('ignore les jalons sans responsable ou sans échéance', () => {
+    const projects = [projet('p1')]
+    const milestones = [
+      jalon('m1', '2026-07-25', 'a_faire', 'p1', null),
+      jalon('m2', null, 'a_faire', 'p1', 'c1'),
+    ]
+    const collaborateurs = [collaborateur('c1', 'Madjid')]
+    const indispos = [indisponibiliteCollab('u1', 'c1', '2026-07-01', '2026-12-31', 'conge')]
+    expect(conflitsIndisponibiliteJalons(milestones, projects, collaborateurs, indispos)).toHaveLength(0)
   })
 })
 

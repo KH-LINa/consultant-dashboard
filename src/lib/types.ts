@@ -147,6 +147,9 @@ export interface ProjectMilestone {
   livrable: string | null
   ordre: number
   created_at: string
+  // Collaborateur responsable de ce jalon (ex: qui doit préparer/présenter le
+  // livrable) — optionnel, null tant que non assigné.
+  responsable_id: string | null
 }
 
 export type ProjectTaskStatus = 'a_faire' | 'en_cours' | 'fait' | 'bloque'

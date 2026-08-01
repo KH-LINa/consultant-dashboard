@@ -184,6 +184,12 @@ export default async function ProjetLectureSeulePage({ params }: { params: { id:
                 <div key={m.id} className="border rounded-lg p-2.5 flex items-center justify-between gap-2 text-sm">
                   <span className="truncate">{m.titre}</span>
                   <div className="flex items-center gap-2 whitespace-nowrap">
+                    {m.responsable_id && collabById[m.responsable_id] && (
+                      <span className="text-xs text-gray-400 flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full" style={{ background: collabById[m.responsable_id].couleur }} />
+                        {collabById[m.responsable_id].nom}
+                      </span>
+                    )}
                     <span className="text-xs text-gray-400">{fmt(m.date_echeance)}</span>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${mst.cls}`}>{mst.label}</span>
                   </div>

@@ -1697,7 +1697,7 @@ export function ProjectGantt({
         </form>
       </CardContent>
 
-      <GanttTooltip milestone={selectedMilestone} onClose={() => setSelectedMilestone(null)} />
+      <GanttTooltip milestone={selectedMilestone} collaborateurs={collaborateurs} onClose={() => setSelectedMilestone(null)} />
     </Card>
 
     <Dialog open={regenDialogOpen} onOpenChange={setRegenDialogOpen}>

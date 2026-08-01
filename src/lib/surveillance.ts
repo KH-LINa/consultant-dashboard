@@ -362,6 +362,61 @@ export function conflitsIndisponibiliteCollaborateurs(
 }
 
 /**
+ * Même garde-fou que conflitsIndisponibiliteCollaborateurs, mais pour un
+ * JALON (échéance ponctuelle plutôt qu'une plage de dates — date_echeance
+ * sert de début ET de fin au chevauchement).
+ */
+export interface ConflitIndisponibiliteJalon {
+  collaborateurNom: string
+  motif: ResourceUnavailabilityMotif
+  indispoDebut: string
+  indispoFin: string
+  projetId: string
+  projetTitre: string
+  jalonId: string
+  jalonTitre: string
+  dateEcheance: string
+}
+
+export function conflitsIndisponibiliteJalons(
+  milestones: ProjectMilestone[],
+  projects: Project[],
+  collaborateurs: Collaborateur[],
+  unavailabilities: CollaborateurUnavailability[]
+): ConflitIndisponibiliteJalon[] {
+  const projetById = new Map(projects.map((p) => [p.id, p]))
+  const collabById = new Map(collaborateurs.map((c) => [c.id, c]))
+  const indispoByCollab = new Map<string, CollaborateurUnavailability[]>()
+  for (const u of unavailabilities) {
+    if (!indispoByCollab.has(u.collaborateur_id)) indispoByCollab.set(u.collaborateur_id, [])
+    indispoByCollab.get(u.collaborateur_id)!.push(u)
+  }
+
+  const out: ConflitIndisponibiliteJalon[] = []
+  for (const m of milestones) {
+    if (!m.responsable_id || !m.date_echeance) continue
+    const indispos = indispoByCollab.get(m.responsable_id) ?? []
+    const u = indisponibiliteChevauchante(m.date_echeance, m.date_echeance, indispos)
+    if (!u) continue
+    const collab = collabById.get(m.responsable_id)
+    const projet = projetById.get(m.project_id)
+    if (!collab || !projet) continue
+    out.push({
+      collaborateurNom: collab.nom,
+      motif: u.motif,
+      indispoDebut: u.date_debut,
+      indispoFin: u.date_fin,
+      projetId: projet.id,
+      projetTitre: projet.titre,
+      jalonId: m.id,
+      jalonTitre: m.titre,
+      dateEcheance: m.date_echeance,
+    })
+  }
+  return out
+}
+
+/**
  * Récap des affectations d'UNE ressource humaine (module Ressources), pour
  * l'email de rappel qui lui est envoyé directement (voir email ci-dessous).
  * Une affectation liée à une tâche déjà "fait" est omise (rien à rappeler) ;

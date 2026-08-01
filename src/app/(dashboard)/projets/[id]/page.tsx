@@ -194,7 +194,12 @@ export default async function ProjetDetailPage({ params }: { params: { id: strin
       <CollaborateursManager collaborateurs={collaborateurs ?? []} />
       <PhasesManager projectId={project.id} phases={phases ?? []} tasks={tasksList} />
       <PhaseDependenciesManager projectId={project.id} phases={phasesList} dependencies={phaseDependencies ?? []} />
-      <MilestonesManager projectId={project.id} milestones={milestones ?? []} />
+      <MilestonesManager
+        projectId={project.id}
+        milestones={milestones ?? []}
+        collaborateurs={collaborateurs ?? []}
+        unavailabilities={unavailabilities ?? []}
+      />
       <TasksManager
         projectId={project.id}
         tasks={tasksList}

@@ -1,6 +1,6 @@
 'use client'
 
-import type { ProjectMilestone, MilestoneStatus } from '@/lib/types'
+import type { ProjectMilestone, MilestoneStatus, Collaborateur } from '@/lib/types'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
@@ -14,11 +14,15 @@ const statutLabel: Record<MilestoneStatus, { label: string; cls: string }> = {
 
 interface GanttTooltipProps {
   milestone: ProjectMilestone | null
+  collaborateurs?: Collaborateur[]
   onClose: () => void
 }
 
-export function GanttTooltip({ milestone, onClose }: GanttTooltipProps) {
+export function GanttTooltip({ milestone, collaborateurs = [], onClose }: GanttTooltipProps) {
   const st = milestone ? statutLabel[milestone.statut] : null
+  const responsable = milestone?.responsable_id
+    ? collaborateurs.find((c) => c.id === milestone.responsable_id)
+    : null
   return (
     <Dialog open={!!milestone} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-sm">
@@ -43,6 +47,17 @@ export function GanttTooltip({ milestone, onClose }: GanttTooltipProps) {
             <div className="flex items-center justify-between">
               <span className="text-gray-500">Statut</span>
               {st && <span className={`text-xs px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>}
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">Responsable</span>
+              {responsable ? (
+                <span className="flex items-center gap-1.5 font-medium">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: responsable.couleur }} />
+                  {responsable.nom}
+                </span>
+              ) : (
+                <span className="text-gray-400">Non assigné</span>
+              )}
             </div>
             <div>
               <p className="text-gray-500 mb-1">Livrable</p>

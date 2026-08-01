@@ -6,9 +6,9 @@ import { toLocalISO } from '@/lib/gantt-deps'
 import { feriesCourants } from '@/lib/jours-ouvres'
 import {
   alertesTousProjets, nbAlertes, conflitsCollaborateurs, conflitsRessourcesModule, conflitsIndisponibilite,
-  conflitsIndisponibiliteCollaborateurs, recapsRessources,
+  conflitsIndisponibiliteCollaborateurs, conflitsIndisponibiliteJalons, recapsRessources,
   type AlerteProjet, type ConflitRessource, type ConflitIndisponibilite, type ConflitIndisponibiliteCollaborateur,
-  type RecapRessource,
+  type ConflitIndisponibiliteJalon, type RecapRessource,
 } from '@/lib/surveillance'
 import type {
   Project, ProjectPhase, ProjectTask, ProjectMilestone, TaskDependency, PhaseDependency,
@@ -131,6 +131,22 @@ function renderConflitsIndisponibiliteCollaborateursHtml(conflits: ConflitIndisp
   `
 }
 
+function renderConflitsIndisponibiliteJalonsHtml(conflits: ConflitIndisponibiliteJalon[], origin: string): string {
+  if (conflits.length === 0) return ''
+  return `
+    <div style="margin-bottom:28px; padding-bottom:20px; border-bottom:1px solid #e5e7eb;">
+      <h3 style="margin:0 0 10px; font-size:15px; color:#b91c1c;">⚠ Jalon échéant pendant l'indisponibilité de son responsable</h3>
+      <ul style="margin:0; padding-left:20px; font-size:13px; color:#374151;">
+        ${conflits.map((c) => `
+          <li style="margin-bottom:6px;">
+            <strong>${esc(c.collaborateurNom)}</strong> est ${MOTIF_LABEL[c.motif].toLowerCase()} du ${fmt(c.indispoDebut)} au ${fmt(c.indispoFin)},
+            mais responsable du jalon « ${esc(c.jalonTitre)} » (<a href="${origin}/projets/${c.projetId}" style="color:#534AB7;">${esc(c.projetTitre)}</a>, échéance ${fmt(c.dateEcheance)})
+          </li>`).join('')}
+      </ul>
+    </div>
+  `
+}
+
 function renderRecapRessourceHtml(recap: RecapRessource, origin: string, fromName: string): string {
   return `
     <div style="font-family: sans-serif; max-width: 640px; margin: 0 auto; color: #1a1a1a;">
@@ -230,13 +246,14 @@ export async function GET(request: NextRequest) {
   ]
   const conflitsIndispo = conflitsIndisponibilite(assignments, tasks, resources, unavailabilities, projects)
   const conflitsIndispoCollab = conflitsIndisponibiliteCollaborateurs(tasks, projects, collaborateurs, collabUnavailabilities)
+  const conflitsIndispoJalons = conflitsIndisponibiliteJalons(milestones, projects, collaborateurs, collabUnavailabilities)
 
   const recapsRes = settings.surveillance_recap_ressources_auto === 'true'
     ? recapsRessources(resources, assignments, tasks, projects)
     : []
 
   const rienPourAdmin = parProjet.length === 0 && conflitsRessources.length === 0 && conflitsIndispo.length === 0
-    && conflitsIndispoCollab.length === 0
+    && conflitsIndispoCollab.length === 0 && conflitsIndispoJalons.length === 0
   if (rienPourAdmin && recapsRes.length === 0) {
     return NextResponse.json({ success: true, alertes: 0, projets_concernes: 0, recaps_envoyes: 0 })
   }
@@ -263,10 +280,11 @@ export async function GET(request: NextRequest) {
   }
 
   const totalAlertes = parProjet.reduce((s, a) => s + nbAlertes(a), 0) + conflitsRessources.length + conflitsIndispo.length
-    + conflitsIndispoCollab.length
+    + conflitsIndispoCollab.length + conflitsIndispoJalons.length
   const sections = renderConflitsRessourcesHtml(conflitsRessources, origin)
     + renderConflitsIndisponibiliteHtml(conflitsIndispo, origin)
     + renderConflitsIndisponibiliteCollaborateursHtml(conflitsIndispoCollab, origin)
+    + renderConflitsIndisponibiliteJalonsHtml(conflitsIndispoJalons, origin)
     + parProjet.map((a) => renderProjetHtml(a, origin)).join('')
 
   const { error: mailErr } = await resend.emails.send({
