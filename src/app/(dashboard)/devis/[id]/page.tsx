@@ -3,16 +3,18 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { QuoteForm } from '@/components/devis/quote-form'
 import { GenerateContractButton } from '@/components/contracts/GenerateContractButton'
+import { CoherenceCheckPanel } from '@/components/devis/CoherenceCheckPanel'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CheckCircle2, XCircle, Mail, MessageSquare, FileSignature } from 'lucide-react'
 
 export default async function EditDevisPage({ params }: { params: { id: string } }) {
   const supabase = await createClient()
-  const [{ data: quote }, { data: contacts }, { data: messages }, { data: existingContract }] = await Promise.all([
+  const [{ data: quote }, { data: contacts }, { data: messages }, { data: existingContract }, { data: existingProject }] = await Promise.all([
     supabase.from('quotes').select('*').eq('id', params.id).single(),
     supabase.from('contacts').select('id, nom, entreprise').order('nom'),
     supabase.from('quote_messages').select('*').eq('quote_id', params.id).order('received_at', { ascending: false }),
     supabase.from('contracts').select('id, numero, statut').eq('quote_id', params.id).neq('statut', 'archive').maybeSingle(),
+    supabase.from('projects').select('id').eq('quote_id', params.id).maybeSingle(),
   ])
 
   if (!quote) notFound()
@@ -42,6 +44,12 @@ export default async function EditDevisPage({ params }: { params: { id: string }
           )
         )}
       </div>
+
+      <CoherenceCheckPanel
+        quoteId={params.id}
+        projectId={existingProject?.id ?? null}
+        contractId={existingContract?.id ?? null}
+      />
 
       {/* Réponse du client (acceptation en ligne) */}
       {quote.response_at && (
