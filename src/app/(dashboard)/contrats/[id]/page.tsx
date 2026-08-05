@@ -1,11 +1,10 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { ContractEditor } from '@/components/contracts/ContractEditor'
+import { ContractReviewPanel } from '@/components/contracts/ContractReviewPanel'
 import { ContractStatusBadge } from '@/components/contracts/ContractStatusBadge'
 import { ContractActions } from '@/components/contracts/ContractActions'
-import { VerifyContractButton } from '@/components/contracts/VerifyContractButton'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { ArrowLeft, CalendarDays, User, Euro, FileText } from 'lucide-react'
 import type { ContractStatus } from '@/lib/types'
 
@@ -125,21 +124,12 @@ export default async function ContratDetailPage({ params }: { params: { id: stri
         )}
       </div>
 
-      <VerifyContractButton contractId={contract.id} />
-
-      {/* Éditeur de contenu */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Contenu du contrat</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ContractEditor
-            contractId={contract.id}
-            initialContenu={contract.contenu}
-            readOnly={readOnly}
-          />
-        </CardContent>
-      </Card>
+      {/* Vérification, correction proposée et édition du contenu */}
+      <ContractReviewPanel
+        contractId={contract.id}
+        initialContenu={contract.contenu}
+        readOnly={readOnly}
+      />
 
       {/* Note juridique */}
       <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">

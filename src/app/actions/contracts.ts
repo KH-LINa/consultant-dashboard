@@ -283,14 +283,92 @@ export async function verifyContract(contractId: string): Promise<VerifyResult> 
   return { ok: true, alertes }
 }
 
+const CorrectionSchema = z.object({
+  contenu: z.string().describe("Texte INTÉGRAL et corrigé du contrat, dans son ensemble — jamais un extrait ni un résumé des changements"),
+})
+
+const SYSTEM_PROMPT_CORRECTION = `Tu es Exact, l'assistant qui corrige un contrat de prestation de services à partir d'une liste précise de points signalés lors d'une vérification. Ton rôle est strictement borné :
+- Corrige UNIQUEMENT les points listés, rien d'autre — ne change ni le style, ni la mise en forme, ni une clause non concernée par ces points.
+- Base-toi sur le devis actuel fourni pour corriger les montants, prestations ou livrables incohérents.
+- Si un point concerne une variable {{...}} jamais remplacée : NE L'INVENTE PAS, laisse-la telle quelle — un humain doit la compléter, ce n'est pas ton rôle.
+- Renvoie le texte INTÉGRAL du contrat, corrections incluses, jamais un extrait ni un résumé des changements.
+
+Réponds en français uniquement.`
+
+/**
+ * Propose une correction du contrat à partir des points signalés par
+ * verifyContract ci-dessus — ne modifie RIEN en base : renvoie un texte
+ * proposé que l'appelant affiche dans l'éditeur pour relecture, la
+ * sauvegarde restant une action manuelle explicite (updateContractContent).
+ */
+export async function correctContract(
+  contractId: string, alertes: string[]
+): Promise<{ ok: true; contenu: string } | { ok: false; error: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Non autorisé' }
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return { ok: false, error: 'ANTHROPIC_API_KEY non configurée côté serveur.' }
+  }
+  if (alertes.length === 0) return { ok: false, error: 'Aucun point à corriger.' }
+
+  const { data: contract } = await supabase
+    .from('contracts')
+    .select('*, quote:quotes(*)')
+    .eq('id', contractId)
+    .single()
+
+  if (!contract) return { ok: false, error: 'Contrat introuvable' }
+  if (!contract.quote) return { ok: false, error: 'Devis source introuvable' }
+
+  const client = new Anthropic()
+  const lignesTxt = (contract.quote.lignes ?? [])
+    .map((l: { description: string; quantite: number; prix_unitaire: number }, i: number) =>
+      `${i + 1}. ${l.description} (quantité : ${l.quantite}, prix unitaire : ${l.prix_unitaire} €)`)
+    .join('\n')
+  const alertesTxt = alertes.map((a) => `- ${a}`).join('\n')
+
+  try {
+    const response = await client.messages.parse({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4000,
+      system: [{ type: 'text', text: SYSTEM_PROMPT_CORRECTION, cache_control: { type: 'ephemeral' } }],
+      messages: [{
+        role: 'user',
+        content: `Devis actuel — ${contract.quote.titre} :\n${lignesTxt || '(aucune ligne)'}\nMontant HT actuel : ${contract.quote.montant_ht} €\n\nPoints à corriger :\n${alertesTxt}\n\nContrat actuel :\n${contract.contenu}`,
+      }],
+      output_config: { format: zodOutputFormat(CorrectionSchema) },
+    })
+    if (!response.parsed_output) {
+      return { ok: false, error: "Exact n'a pas pu proposer de correction. Réessayez." }
+    }
+    return { ok: true, contenu: response.parsed_output.contenu }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Erreur inconnue'
+    return { ok: false, error: `Erreur Exact : ${msg}` }
+  }
+}
+
 export async function updateContractContent(id: string, contenu: string): Promise<ActionResult> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: 'Non autorisé' }
 
+  // Le montant du contrat est resynchronisé sur celui du devis source à
+  // chaque sauvegarde — qu'elle suive une édition manuelle ou une
+  // correction proposée par Exact, un contrat ne doit jamais afficher un
+  // montant différent de son devis.
+  const payload: { contenu: string; montant_ht?: number } = { contenu }
+  const { data: contract } = await supabase.from('contracts').select('quote_id').eq('id', id).single()
+  if (contract?.quote_id) {
+    const { data: quote } = await supabase.from('quotes').select('montant_ht').eq('id', contract.quote_id).single()
+    if (quote) payload.montant_ht = quote.montant_ht
+  }
+
   const { error } = await supabase
     .from('contracts')
-    .update({ contenu })
+    .update(payload)
     .eq('id', id)
 
   if (error) return { ok: false, error: error.message }
