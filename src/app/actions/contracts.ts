@@ -9,12 +9,28 @@ import { revalidatePath } from 'next/cache'
 
 type ActionResult = { ok: true } | { ok: false; error: string }
 type GenerateResult = { ok: true; contractId: string; existing?: boolean } | { ok: false; error: string }
+type VerifyResult = { ok: true; alertes: string[] } | { ok: false; error: string }
 
 const ContractVariablesSchema = z.object({
   objet_mission: z.string().describe('Description de la mission en 2 à 4 phrases, ton professionnel'),
   livrables: z.string().describe('Liste des livrables attendus, séparés par des tirets ou virgules, concis'),
   delai: z.string().describe('Délai d\'exécution (ex : « 3 semaines », « 2 mois »)'),
 })
+
+const VerificationSchema = z.object({
+  remarques: z
+    .array(z.string())
+    .describe('Écarts matériels et vérifiables entre le contrat et le devis actuel ; tableau VIDE si tout est cohérent'),
+})
+
+const SYSTEM_PROMPT_VERIFICATION = `Tu es Exact, l'assistant qui vérifie la fidélité d'un contrat de prestation de services déjà rédigé, en le comparant au devis qui lui a servi de source. Ton rôle est strictement borné : signaler les écarts, jamais réécrire ni proposer de nouveau texte.
+
+Compare le CONTENU DU CONTRAT fourni aux LIGNES DU DEVIS ACTUEL (le devis a pu être modifié depuis la génération du contrat — c'est précisément ce qu'il faut détecter). Signale UNIQUEMENT des écarts matériels et vérifiables :
+- une prestation présente dans le devis absente du contrat, ou l'inverse
+- un objet de mission qui ne correspond plus à ce que décrivent les lignes du devis
+- des livrables incohérents avec le devis
+
+NE signale JAMAIS un simple choix de style, une tournure de phrase, ou une reformulation légitime du même contenu. Si tout est cohérent, renvoie une liste vide — un contrat correct n'a pas besoin d'être signalé pour rien. Réponds en français uniquement.`
 
 const SYSTEM_PROMPT = `Tu es Exact, l'assistant qui prépare les parties variables d'un contrat de prestation de services pour un consultant IA indépendant français. Ton rôle est strictement borné : rester fidèle au devis et au template fourni, jamais inventer ou improviser au-delà de ce qui t'est demandé.
 
@@ -189,6 +205,82 @@ Génère l'objet_mission, les livrables et le délai pour ce contrat.`,
   revalidatePath('/contrats')
   revalidatePath(`/devis/${quoteId}`)
   return { ok: true, contractId: newContract.id }
+}
+
+/**
+ * Vérification NON bloquante (voir SYSTEM_PROMPT_VERIFICATION) : Exact relit
+ * un contrat déjà généré et signale les écarts avec le devis source, sans
+ * jamais réécrire ni modifier quoi que ce soit — même garde-fou "signale
+ * seulement" que le reste de l'app (indisponibilités, conflits de dépendances...).
+ * Utile surtout après une édition manuelle du contrat (ContractEditor) ou une
+ * modification du devis après coup.
+ */
+export async function verifyContract(contractId: string): Promise<VerifyResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Non autorisé' }
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return { ok: false, error: 'ANTHROPIC_API_KEY non configurée côté serveur.' }
+  }
+
+  const { data: contract } = await supabase
+    .from('contracts')
+    .select('*, quote:quotes(*), template:contract_templates(offre)')
+    .eq('id', contractId)
+    .single()
+
+  if (!contract) return { ok: false, error: 'Contrat introuvable' }
+  if (!contract.quote) return { ok: false, error: 'Devis source introuvable' }
+
+  const alertes: string[] = []
+
+  // --- Vérifications déterministes (aucun appel IA nécessaire) ---
+  const placeholderMatches: string[] = contract.contenu.match(/\{\{\w+\}\}/g) ?? []
+  const placeholders = Array.from(new Set(placeholderMatches))
+  if (placeholders.length > 0) {
+    alertes.push(`Variable(s) jamais remplacée(s) dans le texte : ${placeholders.join(', ')}`)
+  }
+
+  if (Number(contract.montant_ht) !== Number(contract.quote.montant_ht)) {
+    alertes.push(
+      `Le montant du devis a changé depuis la génération du contrat (contrat : ${Number(contract.montant_ht).toLocaleString('fr-FR')} €, devis actuel : ${Number(contract.quote.montant_ht).toLocaleString('fr-FR')} €).`
+    )
+  }
+
+  const offreTemplateActuelle = contract.quote.offre === 'solution_globale' ? 'solution_centralisee' : contract.quote.offre
+  if (contract.template && contract.template.offre !== offreTemplateActuelle) {
+    alertes.push(
+      `Le type d'offre du devis a changé depuis la génération du contrat (contrat basé sur "${contract.template.offre}", devis actuel "${contract.quote.offre}").`
+    )
+  }
+
+  // --- Vérification IA (Exact) : cohérence de fond avec les lignes du devis ---
+  const client = new Anthropic()
+  const lignesTxt = (contract.quote.lignes ?? [])
+    .map((l: { description: string; quantite: number }, i: number) => `${i + 1}. ${l.description} (quantité : ${l.quantite})`)
+    .join('\n')
+
+  try {
+    const response = await client.messages.parse({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1000,
+      system: [{ type: 'text', text: SYSTEM_PROMPT_VERIFICATION, cache_control: { type: 'ephemeral' } }],
+      messages: [{
+        role: 'user',
+        content: `Devis actuel — ${contract.quote.titre} :\n${lignesTxt || '(aucune ligne)'}\n\nContenu du contrat à vérifier :\n${contract.contenu}`,
+      }],
+      output_config: { format: zodOutputFormat(VerificationSchema) },
+    })
+    if (response.parsed_output) {
+      alertes.push(...response.parsed_output.remarques)
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Erreur inconnue'
+    return { ok: false, error: `Erreur Exact : ${msg}` }
+  }
+
+  return { ok: true, alertes }
 }
 
 export async function updateContractContent(id: string, contenu: string): Promise<ActionResult> {

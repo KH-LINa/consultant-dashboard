@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ContractEditor } from '@/components/contracts/ContractEditor'
 import { ContractStatusBadge } from '@/components/contracts/ContractStatusBadge'
 import { ContractActions } from '@/components/contracts/ContractActions'
+import { VerifyContractButton } from '@/components/contracts/VerifyContractButton'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowLeft, CalendarDays, User, Euro, FileText } from 'lucide-react'
 import type { ContractStatus } from '@/lib/types'
@@ -123,6 +124,8 @@ export default async function ContratDetailPage({ params }: { params: { id: stri
           </Card>
         )}
       </div>
+
+      <VerifyContractButton contractId={contract.id} />
 
       {/* Éditeur de contenu */}
       <Card>
