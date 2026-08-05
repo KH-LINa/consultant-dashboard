@@ -2,6 +2,7 @@ import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
 import type { Invoice, Contact } from '@/lib/types'
 import { OFFER_LABELS } from '@/lib/types'
 import { BrandLogo } from '@/lib/pdf/brand-logo'
+import { sansEspaceFinePdf } from '@/lib/pdf/format'
 
 const styles = StyleSheet.create({
   page: { padding: 48, fontSize: 10, fontFamily: 'Helvetica', color: '#1a1a1a' },
@@ -134,10 +135,10 @@ export function InvoicePDF({ invoice, contact, consultantName, siret, email, tel
             <Text style={styles.col6}>{l.description}</Text>
             <Text style={styles.col2}>{l.quantite}</Text>
             <Text style={styles.col2r}>
-              {l.prix_unitaire.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+              {sansEspaceFinePdf(l.prix_unitaire.toLocaleString('fr-FR', { minimumFractionDigits: 2 }))} €
             </Text>
             <Text style={[styles.col2r, { fontFamily: 'Helvetica-Bold' }]}>
-              {(l.quantite * l.prix_unitaire).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+              {sansEspaceFinePdf((l.quantite * l.prix_unitaire).toLocaleString('fr-FR', { minimumFractionDigits: 2 }))} €
             </Text>
           </View>
         ))}
@@ -148,7 +149,7 @@ export function InvoicePDF({ invoice, contact, consultantName, siret, email, tel
             <View style={styles.totalRow}>
               <Text style={{ color: '#6b7280' }}>Total HT</Text>
               <Text style={{ fontFamily: 'Helvetica-Bold' }}>
-                {invoice.montant_ht.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+                {sansEspaceFinePdf(invoice.montant_ht.toLocaleString('fr-FR', { minimumFractionDigits: 2 }))} €
               </Text>
             </View>
             <View style={styles.totalRow}>
@@ -158,7 +159,7 @@ export function InvoicePDF({ invoice, contact, consultantName, siret, email, tel
             <View style={styles.totalRowFinal}>
               <Text style={{ fontSize: 12, fontFamily: 'Helvetica-Bold' }}>TOTAL TTC</Text>
               <Text style={{ fontSize: 14, fontFamily: 'Helvetica-Bold', color: '#534AB7' }}>
-                {invoice.montant_ht.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+                {sansEspaceFinePdf(invoice.montant_ht.toLocaleString('fr-FR', { minimumFractionDigits: 2 }))} €
               </Text>
             </View>
             <Text style={styles.tvaNote}>TVA non applicable — art. 293 B du CGI</Text>

@@ -2,6 +2,7 @@ import {
   Document, Page, Text, View, StyleSheet,
 } from '@react-pdf/renderer'
 import { BrandLogo } from '@/lib/pdf/brand-logo'
+import { sansEspaceFinePdf } from '@/lib/pdf/format'
 
 const styles = StyleSheet.create({
   page: { padding: 48, fontSize: 9.5, fontFamily: 'Helvetica', color: '#1a1a1a', lineHeight: 1.5 },
@@ -37,7 +38,10 @@ export function ContractPDF({ numero, contenu, consultantName, siret, createdAt 
   })
 
   type Segment = { type: 'title' | 'article' | 'blank' | 'text'; text: string }
-  const segments: Segment[] = contenu.split('\n').map((line): Segment => {
+  // Sanitize une seule fois l'ensemble du texte (voir sansEspaceFinePdf) :
+  // protège aussi bien le montant généré à la création que toute somme
+  // réintroduite plus tard par une édition manuelle ou une correction Exact.
+  const segments: Segment[] = sansEspaceFinePdf(contenu).split('\n').map((line): Segment => {
     const t = line.trim()
     if (!t) return { type: 'blank', text: '' }
     if (t === 'CONTRAT DE PRESTATION DE SERVICES') return { type: 'title', text: t }

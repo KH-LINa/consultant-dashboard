@@ -4,6 +4,7 @@ import {
 import type { Quote, Contact } from '@/lib/types'
 import { OFFER_LABELS } from '@/lib/types'
 import { BrandLogo } from '@/lib/pdf/brand-logo'
+import { sansEspaceFinePdf } from '@/lib/pdf/format'
 
 const styles = StyleSheet.create({
   page: { padding: 48, fontSize: 10, fontFamily: 'Helvetica', color: '#1a1a1a' },
@@ -118,10 +119,10 @@ export function QuotePDF({ quote, contact, consultantName, siret }: QuotePDFProp
               <Text style={styles.col6}>{ligne.description}</Text>
               <Text style={styles.col2}>{ligne.quantite}</Text>
               <Text style={styles.col2r}>
-                {ligne.prix_unitaire.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                {sansEspaceFinePdf(ligne.prix_unitaire.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' }))}
               </Text>
               <Text style={[styles.col2total, { fontFamily: 'Helvetica-Bold' }]}>
-                {(ligne.quantite * ligne.prix_unitaire).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                {sansEspaceFinePdf((ligne.quantite * ligne.prix_unitaire).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' }))}
               </Text>
             </View>
           ))}
@@ -132,7 +133,7 @@ export function QuotePDF({ quote, contact, consultantName, siret }: QuotePDFProp
           <View style={styles.totalInner}>
             <Text style={styles.totalLabel}>Montant total HT</Text>
             <Text style={styles.totalAmount}>
-              {quote.montant_ht.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+              {sansEspaceFinePdf(quote.montant_ht.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' }))}
             </Text>
             <Text style={styles.tvaNote}>TVA non applicable — art. 293 B du CGI</Text>
           </View>
