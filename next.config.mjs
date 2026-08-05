@@ -21,6 +21,18 @@ const nextConfig = {
     // Le typage TypeScript reste vérifié ; on n'échoue pas le build sur les règles de style ESLint.
     ignoreDuringBuilds: true,
   },
+  experimental: {
+    // Le cache client (Router Cache) de Next.js 14 garde par défaut la
+    // payload RSC d'une page dynamique pendant 30s après navigation — en
+    // revenant sur le dashboard via la sidebar (navigation "douce", sans
+    // rechargement complet) dans cette fenêtre, les chiffres/alertes
+    // affichés (CA, retards, etc.) restaient donc ceux de la visite
+    // précédente au lieu d'être recalculés. dynamic: 0 désactive ce délai
+    // pour TOUTES les pages dynamiques (authentifiées via cookies) de
+    // l'app : chaque navigation revient toujours chercher des données
+    // fraîches côté serveur.
+    staleTimes: { dynamic: 0 },
+  },
   async headers() {
     return [
       {
