@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { ProjectTask, ProjectPhase, Collaborateur, ProjectTaskStatus, CollaborateurUnavailability } from '@/lib/types'
 import { indisponibiliteChevauchante } from '@/lib/surveillance'
+import { toLocalISO } from '@/lib/gantt-deps'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -32,6 +33,16 @@ function fmtCourt(iso: string): string {
   return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
 }
 
+function joursDepuis(iso: string, auj: string): number {
+  return Math.round((new Date(auj + 'T00:00:00').getTime() - new Date(iso + 'T00:00:00').getTime()) / 86_400_000)
+}
+
+// Retard = date de fin passée et pas encore "fait" — même définition que
+// partout ailleurs dans l'app (alertesProjet, dashboard, notifications).
+function estEnRetard(t: Pick<ProjectTask, 'date_fin' | 'statut'>, auj: string): boolean {
+  return !!t.date_fin && t.date_fin < auj && t.statut !== 'fait'
+}
+
 interface TasksManagerProps {
   projectId: string
   tasks: ProjectTask[]
@@ -55,6 +66,9 @@ export function TasksManager({
   const supabase = createClient()
   const [titre, setTitre] = useState('')
   const [adding, setAdding] = useState(false)
+  // Figé au montage plutôt que recalculé à chaque rendu — un changement de
+  // jour en cours de session n'a pas besoin de se répercuter immédiatement.
+  const [aujourdhui] = useState(() => toLocalISO(new Date()))
 
   // Arrivée depuis un lien "?tache=<id>" (notification de retard par email
   // ou page Notifications) : centre la vue sur la tâche visée et déplie
@@ -211,14 +225,24 @@ export function TasksManager({
       <CardContent className="space-y-2">
         {tasksTriees.map((t) => {
           const resp = t.responsable_id ? collabById[t.responsable_id] : null
+          const enRetard = estEnRetard(t, aujourdhui)
           return (
             <div key={t.id} id={`tache-${t.id}`}
               className={`border rounded-lg p-3 space-y-2 group transition-colors ${
-                surligner && t.id === tacheActive ? 'ring-2 ring-amber-400 bg-amber-50/60' : ''
+                surligner && t.id === tacheActive
+                  ? 'ring-2 ring-amber-400 bg-amber-50/60'
+                  : enRetard ? 'border-red-200 bg-red-50/40' : ''
               }`}>
               <div className="flex items-center gap-2">
                 <Input className="h-8 flex-1 font-medium" defaultValue={t.titre}
                   onBlur={(e) => e.target.value !== t.titre && update(t.id, 'titre', e.target.value)} />
+                {enRetard && (
+                  <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium flex items-center gap-1 shrink-0"
+                    title="Échéance dépassée, pas encore marquée « Fait »">
+                    <AlertTriangle className="h-3 w-3" />
+                    En retard ({joursDepuis(t.date_fin!, aujourdhui)} j)
+                  </span>
+                )}
                 <span className={`text-xs px-2 py-1 rounded-full ${statutStyle[t.statut]}`}>
                   {statutLabel[t.statut]}
                 </span>
