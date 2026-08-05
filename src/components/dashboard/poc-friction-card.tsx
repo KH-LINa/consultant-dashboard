@@ -26,7 +26,7 @@ export function PocFrictionCard({ risques }: { risques: ProjetEnRisquePoc[] }) {
       </CardHeader>
       <CardContent>
         <p className="text-xs text-amber-700 mb-2">
-          Ces projets n&apos;ont pas progressé après la date de fin prévue d&apos;une phase —
+          Ces projets n&apos;ont pas progressé alors que la phase suivante aurait dû démarrer —
           c&apos;est précisément le type de transition où la majorité des projets IA industriels
           s&apos;arrêtent (POC → production, mais pas seulement).
         </p>
@@ -37,7 +37,7 @@ export function PocFrictionCard({ risques }: { risques: ProjetEnRisquePoc[] }) {
               <div className="min-w-0">
                 <p className="text-sm font-medium text-gray-800 truncate">{r.projectTitre}</p>
                 <p className="text-xs text-amber-700 truncate">
-                  {r.estZonePoc ? 'Phase POC dépassée' : `Bloqué après « ${r.phaseTitre} »`}
+                  {r.estZonePoc ? 'Phase POC terminée' : `« ${r.phaseTitre} » terminée`} — « {r.phaseSuivanteTitre} » n&apos;a pas démarré
                 </p>
               </div>
               <span className="text-xs font-medium text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full shrink-0">

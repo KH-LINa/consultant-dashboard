@@ -367,9 +367,13 @@ export function findUntrackedDependencies<E extends EntiteDatee = ProjectTask, D
 export interface ProjetEnRisquePoc {
   projectId: string
   projectTitre: string
+  // Titre de la phase déjà terminée, après laquelle rien n'a progressé.
   phaseTitre: string
+  // Titre de la phase suivante, qui aurait dû démarrer et n'a montré aucune
+  // tâche entamée — c'est elle, pas phaseTitre, qui est concrètement en retard.
+  phaseSuivanteTitre: string
   joursDeRetard: number
-  // Vrai si la phase bloquante est explicitement un POC/preuve de concept
+  // Vrai si la phase terminée est explicitement un POC/preuve de concept
   // (voir 01-methodologie/grille-diagnostic-maturite-ia.md) — sinon, c'est
   // une transition de phase générique qui accroche, même logique de risque.
   estZonePoc: boolean
@@ -388,21 +392,32 @@ const RE_POC = /\bpoc\b|preuve de concept/i
  * "Proposition commerciale"), la version stricte ne détectait donc presque
  * jamais rien en pratique.
  *
+ * Le retard se compte depuis la date de DÉBUT PRÉVUE de la phase suivante,
+ * pas depuis la date de FIN de la phase précédente : un écart volontaire
+ * entre deux phases (ex. attente d'un rendez-vous client, prévu comme tel
+ * dans le planning) n'est pas un retard tant que la phase suivante n'a pas
+ * elle-même dépassé sa propre date de début — compter depuis la fin de la
+ * précédente signalait à tort ce genre d'écart planifié comme "en retard"
+ * dès le lendemain de la fin de la phase précédente.
+ *
  * Un projet est signalé si :
  * - il a au moins 2 phases (une transition suppose une phase "après") ;
- * - la DERNIÈRE phase (par ordre) dont l'échéance est dépassée n'est pas la
- *   toute dernière phase du projet ;
- * - aucune phase suivante n'a de tâche entamée ("en_cours" ou "fait") —
- *   rien n'a démarré après.
- * `estZonePoc` distingue le cas où la phase bloquante correspond
+ * - une phase (pas la première) a une date de début dépassée sans qu'aucune
+ *   tâche n'y ait démarré ("en_cours" ou "fait"), ni dans une phase encore
+ *   après — rien n'a bougé depuis que cette phase aurait dû commencer ;
+ * - la phase précédente (celle dont le titre est rapporté) n'est jamais la
+ *   toute dernière du projet (le simple retard de la dernière phase est un
+ *   retard de tâche ordinaire, pas une friction de TRANSITION).
+ * `estZonePoc` distingue le cas où la phase terminée correspond
  * explicitement au vocabulaire POC, pour un message plus spécifique côté
  * affichage. Projets déjà "terminé" ou "annulé" ignorés. Fonction pure,
  * pensée pour tourner sur l'ensemble des projets/phases/tâches en une
- * passe (dashboard).
+ * passe (dashboard). Un seul signalement par projet (la première
+ * transition bloquée dans l'ordre du planning).
  */
 export function detecterFrictionPocProduction(
   projects: Pick<Project, 'id' | 'titre' | 'statut'>[],
-  phases: Pick<ProjectPhase, 'id' | 'project_id' | 'titre' | 'ordre' | 'date_fin'>[],
+  phases: Pick<ProjectPhase, 'id' | 'project_id' | 'titre' | 'ordre' | 'date_debut'>[],
   tasks: Pick<ProjectTask, 'phase_id' | 'statut'>[]
 ): ProjetEnRisquePoc[] {
   const today = new Date().toISOString().slice(0, 10)
@@ -416,25 +431,26 @@ export function detecterFrictionPocProduction(
       .sort((a, b) => a.ordre - b.ordre)
     if (phasesDuProjet.length < 2) continue
 
-    const ordreMax = phasesDuProjet[phasesDuProjet.length - 1].ordre
-    const phaseBloquante = [...phasesDuProjet].reverse().find(
-      (p): p is typeof p & { date_fin: string } => !!p.date_fin && p.date_fin < today && p.ordre < ordreMax
-    )
-    if (!phaseBloquante) continue
+    for (let i = 1; i < phasesDuProjet.length; i++) {
+      const phase = phasesDuProjet[i]
+      if (!phase.date_debut || phase.date_debut >= today) continue
 
-    const phasesSuivantes = phasesDuProjet.filter((p) => p.ordre > phaseBloquante.ordre)
-    const progressionApres = phasesSuivantes.some((p) =>
-      tasks.some((t) => t.phase_id === p.id && (t.statut === 'en_cours' || t.statut === 'fait'))
-    )
-    if (progressionApres) continue
+      const progression = phasesDuProjet
+        .slice(i)
+        .some((p) => tasks.some((t) => t.phase_id === p.id && (t.statut === 'en_cours' || t.statut === 'fait')))
+      if (progression) continue
 
-    const joursDeRetard = Math.floor(
-      (Date.now() - new Date(phaseBloquante.date_fin + 'T00:00:00').getTime()) / 86_400_000
-    )
-    resultats.push({
-      projectId: project.id, projectTitre: project.titre, phaseTitre: phaseBloquante.titre,
-      joursDeRetard, estZonePoc: RE_POC.test(phaseBloquante.titre),
-    })
+      const phasePrecedente = phasesDuProjet[i - 1]
+      const joursDeRetard = Math.floor(
+        (Date.now() - new Date(phase.date_debut + 'T00:00:00').getTime()) / 86_400_000
+      )
+      resultats.push({
+        projectId: project.id, projectTitre: project.titre,
+        phaseTitre: phasePrecedente.titre, phaseSuivanteTitre: phase.titre,
+        joursDeRetard, estZonePoc: RE_POC.test(phasePrecedente.titre),
+      })
+      break
+    }
   }
 
   return resultats.sort((a, b) => b.joursDeRetard - a.joursDeRetard)

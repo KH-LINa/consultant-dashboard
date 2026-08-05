@@ -45,7 +45,7 @@ async function ManagerDashboard() {
     supabase.from('missions').select('id, statut'),
     supabase.from('project_tasks').select('id', { count: 'exact', head: true }).lt('date_fin', todayIso).neq('statut', 'fait'),
     supabase.from('contacts').select('id, nom, entreprise, code_client').eq('type', 'client').order('nom'),
-    supabase.from('project_phases').select('id, project_id, titre, ordre, date_fin'),
+    supabase.from('project_phases').select('id, project_id, titre, ordre, date_debut'),
     supabase.from('project_tasks').select('phase_id, statut'),
   ])
 
@@ -190,7 +190,7 @@ export default async function DashboardPage() {
     supabase.from('quotes').select('*, contact:contacts(nom, entreprise)'),
     supabase.from('contacts').select('id, nom, entreprise, type'),
     supabase.from('projects').select('id, titre, statut, date_dernier_suivi'),
-    supabase.from('project_phases').select('id, project_id, titre, ordre, date_fin'),
+    supabase.from('project_phases').select('id, project_id, titre, ordre, date_debut'),
     supabase.from('project_tasks').select('phase_id, statut'),
   ])
 

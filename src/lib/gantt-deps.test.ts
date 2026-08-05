@@ -273,8 +273,38 @@ describe('detecterFrictionPocProduction', () => {
     ]
     const resultats = detecterFrictionPocProduction(projects, phases, [])
     expect(resultats).toHaveLength(1)
-    expect(resultats[0].phaseTitre).toBe('Proposition commerciale')
+    expect(resultats[0].phaseTitre).toBe('Diagnostic')
+    expect(resultats[0].phaseSuivanteTitre).toBe('Proposition commerciale')
     expect(resultats[0].estZonePoc).toBe(false)
+  })
+
+  it('compte le retard depuis la date de DÉBUT de la phase suivante, pas la date de FIN de la précédente', () => {
+    // Diagnostic a fini il y a 10 j, mais "Proposition commerciale" n'était
+    // planifiée qu'à partir d'il y a 3 j (écart volontaire dans le planning,
+    // pas un blocage soudain) — le retard réel se compte depuis là, pas
+    // depuis la fin de Diagnostic.
+    const projects = [projet('pr1', 'en_cours')]
+    const phases = [
+      { ...phase('diag', ilYA(20), ilYA(10)), titre: 'Diagnostic', project_id: 'pr1', ordre: 0 },
+      { ...phase('prop', ilYA(3), ilYAmois(-1)), titre: 'Proposition commerciale', project_id: 'pr1', ordre: 1 },
+    ]
+    const resultats = detecterFrictionPocProduction(projects, phases, [])
+    expect(resultats).toHaveLength(1)
+    expect(resultats[0].joursDeRetard).toBe(3)
+  })
+
+  it('ne signale pas un écart volontaire entre deux phases tant que la phase suivante n\'a pas elle-même dépassé sa date de début', () => {
+    // Diagnostic a fini il y a 5 j, mais "Proposition commerciale" n'est
+    // planifiée que dans 5 j — écart voulu du planning, pas un blocage :
+    // rien n'est encore en retard par rapport au planning lui-même.
+    const projects = [projet('pr1', 'en_cours')]
+    const d1 = new Date(); d1.setDate(d1.getDate() + 5)
+    const d2 = new Date(); d2.setDate(d2.getDate() + 7)
+    const phases = [
+      { ...phase('diag', ilYA(15), ilYA(5)), titre: 'Diagnostic', project_id: 'pr1', ordre: 0 },
+      { ...phase('prop', toLocalISO(d1), toLocalISO(d2)), titre: 'Proposition commerciale', project_id: 'pr1', ordre: 1 },
+    ]
+    expect(detecterFrictionPocProduction(projects, phases, [])).toHaveLength(0)
   })
 
   it('ne signale rien pour un projet à une seule phase (pas de transition possible)', () => {
