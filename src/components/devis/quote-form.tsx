@@ -77,7 +77,7 @@ export function QuoteForm({ contacts, quote, defaultContactId }: QuoteFormProps)
             }))
           : [emptyLine()]
       )
-      toast.success('Proposition générée ✨ — vérifiez et ajustez avant d\'enregistrer')
+      toast.success('Franc a préparé une proposition ✨ — vérifiez et ajustez avant d\'enregistrer')
     } catch {
       toast.error('Erreur réseau')
     } finally {
@@ -141,7 +141,7 @@ export function QuoteForm({ contacts, quote, defaultContactId }: QuoteFormProps)
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Sparkles className="h-4 w-4 text-blue-500" />
-            Générer avec l'IA
+            Franc — assistant de rédaction de devis
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -154,11 +154,11 @@ export function QuoteForm({ contacts, quote, defaultContactId }: QuoteFormProps)
             disabled={generating}
           />
           <div className="flex items-center gap-3">
-            <Button type="button" onClick={genererAvecIA} disabled={generating}>
+            <Button type="button" onClick={genererAvecIA} disabled={generating} title="Franc : générer une proposition de devis">
               {generating ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Génération en cours…
+                  Franc rédige…
                 </>
               ) : (
                 <>
@@ -168,7 +168,7 @@ export function QuoteForm({ contacts, quote, defaultContactId }: QuoteFormProps)
               )}
             </Button>
             <p className="text-xs text-gray-500">
-              L'IA pré-remplit titre, offre et lignes. Vous gardez la main pour tout éditer.
+              Franc pré-remplit titre, offre et lignes à partir du besoin décrit. Vous gardez la main pour tout éditer.
             </p>
           </div>
         </CardContent>

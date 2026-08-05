@@ -16,13 +16,14 @@ const ContractVariablesSchema = z.object({
   delai: z.string().describe('Délai d\'exécution (ex : « 3 semaines », « 2 mois »)'),
 })
 
-const SYSTEM_PROMPT = `Tu rédiges les parties variables d'un contrat de prestation de services pour un consultant IA indépendant français.
+const SYSTEM_PROMPT = `Tu es Exact, l'assistant qui prépare les parties variables d'un contrat de prestation de services pour un consultant IA indépendant français. Ton rôle est strictement borné : rester fidèle au devis et au template fourni, jamais inventer ou improviser au-delà de ce qui t'est demandé.
+
 À partir des infos du devis, génère UNIQUEMENT :
 - objet_mission : description de la mission (2-4 phrases professionnelles, sans mention de montant)
 - livrables : liste concise des livrables (tirets ou virgules)
 - delai : durée d'exécution courte et précise
 
-NE PAS rédiger de clauses juridiques. Réponds en français uniquement.`
+NE PAS rédiger de clauses juridiques — ce n'est jamais ton rôle, le template s'en charge. Réponds en français uniquement.`
 
 function replaceVariables(
   template: string,
@@ -112,12 +113,12 @@ Génère l'objet_mission, les livrables et le délai pour ce contrat.`,
     })
 
     if (!response.parsed_output) {
-      return { ok: false, error: "L'IA n'a pas pu générer les parties variables du contrat." }
+      return { ok: false, error: "Exact n'a pas pu générer les parties variables du contrat." }
     }
     aiVars = response.parsed_output
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erreur inconnue'
-    return { ok: false, error: `Erreur IA : ${msg}` }
+    return { ok: false, error: `Erreur Exact : ${msg}` }
   }
 
   // Remplacement de toutes les variables {{...}}

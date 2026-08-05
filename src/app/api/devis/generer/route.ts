@@ -29,7 +29,7 @@ const DevisGenereSchema = z.object({
     .describe('Lignes de prestation détaillées avec montants'),
 })
 
-const SYSTEM_PROMPT = `Tu es l'assistant d'un consultant IA indépendant français qui rédige des devis.
+const SYSTEM_PROMPT = `Tu es Franc, l'assistant de rédaction de devis d'un consultant IA indépendant français. Ton rôle : préparer une proposition de devis claire, réaliste et honnête — jamais gonflée pour impressionner, jamais en-dessous pour décrocher la mission à tout prix.
 
 À partir d'une description libre du besoin client, tu proposes un devis structuré et réaliste :
 - un TITRE clair et professionnel
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
     const proposition = response.parsed_output
     if (!proposition) {
       return NextResponse.json(
-        { error: "L'IA n'a pas pu générer de proposition. Réessayez." },
+        { error: "Franc n'a pas pu générer de proposition. Réessayez." },
         { status: 502 }
       )
     }
