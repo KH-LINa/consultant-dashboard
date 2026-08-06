@@ -43,6 +43,7 @@ export default function TestMaturite() {
   const [form, setForm] = useState({ nom: '', email: '', entreprise: '', website: '' })
   const [envoi, setEnvoi] = useState<'idle' | 'sending' | 'ok' | 'err'>('idle')
   const [erreur, setErreur] = useState('')
+  const [pdfState, setPdfState] = useState<'idle' | 'loading' | 'err'>('idle')
 
   function repondre(indexQuestion: number, valeur: NiveauMaturite) {
     setReponses((prev) => {
@@ -67,6 +68,37 @@ export default function TestMaturite() {
 
   function precedent() {
     if (etape > 0) setEtape((e) => e - 1)
+  }
+
+  async function handleDownloadPdf() {
+    if (!resultat) return
+    setPdfState('loading')
+    try {
+      const res = await fetch('/api/test-maturite/pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nom: form.nom, entreprise: form.entreprise,
+          niveaux: resultat.niveaux, score: resultat.score, recommandation: resultat.recommandation,
+        }),
+      })
+      if (!res.ok) {
+        setPdfState('err')
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'rapport-maturite-ia.pdf'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      setPdfState('idle')
+    } catch {
+      setPdfState('err')
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -219,6 +251,15 @@ export default function TestMaturite() {
                     </div>
                   )
                 })}
+              </div>
+
+              <div className="tm-pdf">
+                <button type="button" className="btn btn-ghost" onClick={handleDownloadPdf} disabled={pdfState === 'loading'}>
+                  {pdfState === 'loading' ? 'Génération…' : 'Télécharger mon rapport (PDF)'}
+                </button>
+                {pdfState === 'err' && (
+                  <p className="form-note">Impossible de générer le PDF pour le moment, réessayez.</p>
+                )}
               </div>
 
               <div className="tm-cta">

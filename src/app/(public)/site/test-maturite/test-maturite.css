@@ -47,7 +47,10 @@
 .iav[data-theme="dark"] .tm-badge.sait_faire { color: #7CD9A0; }
 .iav[data-theme="dark"] .tm-badge.partiel { color: #E8C179; }
 
-.iav .tm-cta { margin-top: 40px; padding-top: 28px; border-top: 1px solid var(--border); }
+.iav .tm-pdf { margin-top: 28px; }
+.iav .tm-pdf .form-note { text-align: left; margin-top: 8px; }
+
+.iav .tm-cta { margin-top: 24px; padding-top: 28px; border-top: 1px solid var(--border); }
 .iav .tm-cta p { font-size: 16px; font-weight: 600; color: var(--ink); margin-bottom: 14px; }
 
 @media (max-width: 600px) {

@@ -115,6 +115,46 @@ export const PALIER_PUBLIC: Record<Recommandation, { titre: string; texte: strin
   },
 }
 
+// Statistiques sourcées de la grille méthodologique, reprises pour le
+// rapport PDF téléchargeable — citées avec leur source, jamais présentées
+// comme un fait nouveau.
+export const STATS_SOURCEES: { texte: string; source: string }[] = [
+  { texte: "Moins d'un quart des entreprises industrielles tirent un bénéfice réel de leurs initiatives IA.", source: 'McKinsey, 2024' },
+  { texte: "74 % des projets IA industriels n'atteignent jamais la production.", source: 'BCG, 2024' },
+]
+
+// Pistes de prochaine étape par levier — UNIQUEMENT pour "partiel" et
+// "ignore" (un levier "sait faire" n'a pas besoin de piste). Contenu
+// rédigé par l'agence, pas une donnée sourcée : présenté dans le rapport
+// comme une piste indicative, jamais comme un diagnostic définitif — même
+// principe de prudence que PALIER_PUBLIC.
+export const PISTE_LEVIER: Record<LevierChamp, Partial<Record<NiveauMaturite, string>>> = {
+  niveau_strategie: {
+    ignore: "Formuler l'objectif métier visé (arrêts machine, rebut, cadence…) avant toute discussion technique, et définir dès maintenant comment son atteinte sera mesurée.",
+    partiel: "Chiffrer précisément l'objectif déjà identifié, pour pouvoir trancher plus tard si le résultat obtenu est suffisant.",
+  },
+  niveau_organisation: {
+    ignore: 'Désigner une personne responsable du pilotage, avec un décideur clairement identifié à qui elle rend compte.',
+    partiel: 'Formaliser la gouvernance de priorisation des cas d\'usage, pour que les arbitrages ne dépendent pas d\'une seule personne.',
+  },
+  niveau_personnel: {
+    ignore: 'Associer les équipes de terrain dès la définition du projet, pas seulement au moment du déploiement.',
+    partiel: "Prévoir une sensibilisation aux limites de l'IA autant qu'à ses promesses, pour éviter des attentes irréalistes.",
+  },
+  niveau_offre: {
+    ignore: "Vérifier auprès des équipes de terrain que l'irritant visé est réellement ressenti, avant de lancer quoi que ce soit.",
+    partiel: 'Chiffrer la valeur attendue (euros, temps, qualité) pour pouvoir comparer objectivement le gain au coût.',
+  },
+  niveau_technologie: {
+    ignore: 'Cartographier les données disponibles (source, fiabilité, accessibilité) avant tout choix de solution.',
+    partiel: "Vérifier concrètement l'intégration envisagée avec les systèmes existants (MES, SCADA, ERP) et identifier qui en assurera la maintenance.",
+  },
+  niveau_environnement: {
+    ignore: 'Vérifier les contraintes réglementaires applicables (RGPD, AI Act, normes sectorielles) et la fiabilité des partenaires externes envisagés.',
+    partiel: "Clarifier les engagements des partenaires externes dans la durée, pas seulement pour la phase de lancement.",
+  },
+}
+
 // Explication par levier ET par niveau (6 × 3 = 18 textes) — ancrée dans les
 // définitions et catégories de risques déjà sourcées dans la grille
 // (01-methodologie/grille-diagnostic-maturite-ia.md), pas de nouveau
