@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import './vitrine.css'
 
 const InfinityMark = () => (
@@ -70,7 +71,7 @@ export default function Vitrine() {
           </nav>
           <div className="header-actions">
             <button className="theme-toggle" onClick={toggleTheme} aria-label="Changer de thème" title="Changer de thème">◐</button>
-            <a className="btn btn-primary" href="#contact">Diagnostic gratuit</a>
+            <Link className="btn btn-primary" href="/site/test-maturite">Test de maturité IA</Link>
           </div>
         </div>
       </header>
@@ -86,7 +87,7 @@ export default function Vitrine() {
               <h1>Fluidifiez vos opérations.<br />Puis <span className="accent">amplifiez-les</span> avec l&apos;IA.</h1>
               <p className="lead">J&apos;accompagne les industriels français à stabiliser leurs processus par le Lean, avant d&apos;y déployer l&apos;intelligence artificielle — dans cet ordre, jamais l&apos;inverse.</p>
               <div className="hero-cta">
-                <a className="btn btn-primary" href="#contact">Demander un diagnostic gratuit</a>
+                <Link className="btn btn-primary" href="/site/test-maturite">Faire le test de maturité IA</Link>
                 <a className="btn btn-ghost" href="#methode">Voir la méthode</a>
               </div>
               <p className="hero-note">Khelaf FEDILA · Consultant Lean &amp; IA Industrielle · PME · ETI · Groupes</p>
@@ -239,8 +240,8 @@ export default function Vitrine() {
           <div className="wrap contact-grid">
             <div className="contact-copy">
               <span className="eyebrow">Parlons-en</span>
-              <h2>Demandez votre diagnostic gratuit.</h2>
-              <p>Décrivez-moi votre contexte en quelques lignes. Je vous réponds sous 48h pour cadrer un premier échange, sans engagement.</p>
+              <h2>Discutons de votre projet.</h2>
+              <p>Pas encore sûr par où commencer ? <Link href="/site/test-maturite">Faites d&apos;abord le test de maturité IA</Link> (5 minutes). Sinon, décrivez-moi votre contexte en quelques lignes ci-dessous — je vous réponds sous 48h pour cadrer un premier échange, sans engagement.</p>
               <div className="contact-list">
                 <div><span className="lbl">Email</span><a href="mailto:k.fedila@gmail.com">k.fedila@gmail.com</a></div>
                 <div><span className="lbl">Téléphone</span><a href="tel:+33651235074">06 51 23 50 74</a></div>
@@ -275,8 +276,8 @@ export default function Vitrine() {
               </div>
               <div className="field">
                 <label htmlFor="besoin">Votre besoin</label>
-                <select id="besoin" name="besoin" defaultValue="Diagnostic gratuit">
-                  <option>Diagnostic gratuit</option>
+                <select id="besoin" name="besoin" defaultValue="Échange découverte">
+                  <option>Échange découverte</option>
                   <option>Consulting — accompagnement Lean</option>
                   <option>Automatisation / IA</option>
                   <option>Solution globale Lean + IA</option>

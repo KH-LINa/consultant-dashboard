@@ -184,6 +184,8 @@
 .iav .contact-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 48px; }
 .iav .contact-copy h2 { font-size: clamp(28px, 3.4vw, 42px); font-weight: 800; }
 .iav .contact-copy p { margin-top: 16px; color: var(--ink-soft); font-size: 18px; }
+.iav .contact-copy p a { color: var(--accent); font-weight: 600; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.iav .contact-copy p a:hover { color: var(--accent-deep); }
 .iav .contact-list { margin-top: 28px; display: flex; flex-direction: column; gap: 14px; }
 .iav .contact-list div { display: flex; gap: 12px; align-items: center; font-size: 15px; color: var(--ink-soft); }
 .iav .contact-list .lbl { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); min-width: 86px; }
